@@ -22,13 +22,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
 
-public class CalculateAverage_franklyn
-{
+public class CalculateAverage_franklyn {
     private static final String FILE = "./measurements.txt";
 
     private static class MappedFileReader {
@@ -37,8 +35,8 @@ public class CalculateAverage_franklyn
         private int readSize;
         private long fileSize;
         private long bytesRead;
-        public MappedFileReader(FileChannel fch, int readSize) throws IOException
-        {
+
+        public MappedFileReader(FileChannel fch, int readSize) throws IOException {
             this.fch = fch;
             this.readSize = readSize;
             this.fileSize = fch.size();
@@ -46,9 +44,8 @@ public class CalculateAverage_franklyn
             this.buffer = fch.map(FileChannel.MapMode.READ_ONLY, 0, readSize);
         }
 
-        public int get(byte[] readBytes) throws IOException
-        {
-            if(fileSize - bytesRead <= 0) {
+        public int get(byte[] readBytes) throws IOException {
+            if (fileSize - bytesRead <= 0) {
                 return -1;
             }
 
@@ -59,11 +56,11 @@ public class CalculateAverage_franklyn
             bytesRead += bytesToRead;
 
             // If we are done with this chunk of memory, map the next section in.
-            if(readBytes.length > (buffer.limit() - buffer.position())) {
+            if (readBytes.length > (buffer.limit() - buffer.position())) {
                 long remainingFileBytes = fileSize - bytesRead;
                 int partialRead = (int) Math.min(readBytes.length - bytesToRead, remainingFileBytes);
-                buffer = fch.map(FileChannel.MapMode.READ_ONLY, bytesRead - 1, Math.min(readSize, remainingFileBytes));
-                buffer.get(readBytes, bytesToRead-1, partialRead);
+                buffer = fch.map(FileChannel.MapMode.READ_ONLY, bytesRead, Math.min(readSize, remainingFileBytes));
+                buffer.get(readBytes, bytesToRead, partialRead);
                 bytesRead += partialRead;
                 validBytes += partialRead;
             }
@@ -73,66 +70,70 @@ public class CalculateAverage_franklyn
     }
 
     public static void main(String[] args) throws IOException {
+        //Path measurements = Paths.get("/Users/franklyndsouza/src/github.com/damnMeddlingKid/1brc/src/test/resources/samples/measurements-3.txt");
         Path measurements = Paths.get(".", FILE);
+
         final int segmentSize = 4096;
 
         // The max mem we can map is 2GB
-        final int readSize = Integer.MAX_VALUE;
+        final int readSize = segmentSize; //Integer.MAX_VALUE;
 
         final int numSegmentsToRead = (readSize / segmentSize) - 1; //we read one less segment than what we map so that we can overlap with the next read.
 
-        HashMap<byte[], double[]> aggMap = new HashMap<>();
+        HashMap<String, double[]> aggMap = new HashMap<>();
         byte[] segment = new byte[segmentSize];
 
         try(FileChannel fileChannel = (FileChannel) Files.newByteChannel(measurements, EnumSet.of(StandardOpenOption.READ))) {
-//            MappedByteBuffer mappedByteBuffer = fileChannel
-//                    .map(FileChannel.MapMode.READ_ONLY, 0, readSize);
-            MappedFileReader reader = new MappedFileReader(fileChannel, readSize);
+            MappedFileReader reader = new MappedFileReader(fileChannel, (int) Math.min(readSize, fileChannel.size()));
 
             int start = 0;
             int end = 0;
 
             reader.get(segment);
-            int segmentCount = 0;
+            int bytesRead = segment.length;
             byte[] keyBytes;
             byte[] valueBytes;
 
-            while (segmentCount < numSegmentsToRead) {
-                while(end < segment.length && (segment[end] ^ ';') != 0) end++;
+            while (true) {
+                while(end < bytesRead && (segment[end] ^ ';') != 0) end++;
 
                 int length = end - start;
                 keyBytes = new byte[end - start];
                 System.arraycopy(segment, start, keyBytes, 0, length);
 
                 // We've read passed the end of the segment without finding the key
-                if(segment[end] != ';') {
-                    int bytesRead = reader.get(segment);
-                    segmentCount += segmentSize;
+                if(end == bytesRead) {
+                    bytesRead = reader.get(segment);
+                    if(bytesRead == -1) break;
                     end = 0;
-                    while(end <= bytesRead && (segment[end] ^ ';') != 0) end++; // we can technically remove the length check here since we just started the segment.
+                    while(end < bytesRead && (segment[end] ^ ';') != 0) end++; // we can technically remove the length check here since we just started the segment.
                     byte[] temp = keyBytes;
                     keyBytes = new byte[temp.length + end];
+
                     System.arraycopy(temp, 0, keyBytes, 0, temp.length); // copy the partial key we found.
-                    System.arraycopy(segment, 0, keyBytes, 0, end); // copy the rest of the key.
+                    System.arraycopy(segment, 0, keyBytes, temp.length, end); // copy the rest of the key.
                 }
 
                 start = end + 1;
-                while(end < segment.length && (segment[end] ^ '\n') != 0) end++;
+                while(end < bytesRead && (segment[end] ^ '\n') != 0) end++;
 
                 length = end - start;
                 valueBytes = new byte[length];
                 System.arraycopy(segment, start, valueBytes, 0, length);
 
                 // We've read passed the end of the segment without finding the value
-                if(segment[end] != '\n') {
-                    int bytesRead = reader.get(segment);
-                    segmentCount += segmentSize;
+                if(end == bytesRead) {
+                    bytesRead = reader.get(segment);
+                    if(bytesRead == -1) {
+                        aggregateValue(aggMap, keyBytes, valueBytes);
+                        break;
+                    }
                     end = 0;
                     while(end < bytesRead && (segment[end] ^ '\n') != 0) end++;
                     byte[] temp = valueBytes;
                     valueBytes = new byte[temp.length + end];
                     System.arraycopy(temp, 0, valueBytes, 0, temp.length); // copy the partial key we found.
-                    System.arraycopy(segment, 0, valueBytes, 0, end); // copy the rest of the key.
+                    System.arraycopy(segment, 0, valueBytes, temp.length, end); // copy the rest of the key.
                 }
 
                 start = end + 1;
@@ -140,17 +141,28 @@ public class CalculateAverage_franklyn
             }
         }
 
-        //MappedByteBuffer mmap = new MappedByteBuffer()
-        System.out.println(measurements);
+        // print key and values in map sorted alphabetically
+        for (Map.Entry<String, double[]> entry : aggMap.entrySet()) {
+            double[] value = entry.getValue();
+            double min = value[0];
+            double max = value[1];
+            double sum = value[2];
+            double count = value[3];
+            //System.out.println(entry.getKey()+"="+ String.format("%.1f", min) + "/" + String.format("%.1f", sum/count) + "/" + String.format("count %.1f", count) + "/" + String.format("%.1f", max));
+            System.out.println(STR."\{entry.getKey()}=\{String.format("%.1f", min)}/\{String.format("%.1f", sum / count)}/\{String.format("%.1f", max)}");
+        }
+
+        //System.out.println(aggMap);
     }
 
-    private static void aggregateValue(HashMap<byte[], double[]> aggMap, byte[] keyBytes, byte[] valueBytes)
-    {
-        aggMap.compute(keyBytes, (_, v) -> {
+    private static void aggregateValue(HashMap<String, double[]> aggMap, byte[] keyBytes, byte[] valueBytes) {
+        // TODO remove this string allocation using an int map
+        aggMap.compute(new String(keyBytes), (_, v) -> {
             double value = Double.parseDouble(new String(valueBytes));
-            if(v == null) {
-                return new double[]{value, value, value, 1};
-            } else {
+            if (v == null) {
+                return new double[]{ value, value, value, 1 };
+            }
+            else {
                 v[0] = Math.min(v[0], value);
                 v[1] = Math.max(v[1], value);
                 v[2] = v[2] + value;

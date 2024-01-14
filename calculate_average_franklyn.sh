@@ -17,6 +17,6 @@
 
 
 JAVA_OPTS=""
-sdk use java 21.0.1-graal
-time java $JAVA_OPTS --class-path target/average-1.0.0-SNAPSHOT.jar dev.morling.onebrc.CalculateAverage_franklyn
+#sdk use java 21.0.1-graalce
+time java $JAVA_OPTS --enable-preview --class-path target/average-1.0.0-SNAPSHOT.jar dev.morling.onebrc.CalculateAverage_franklyn
 

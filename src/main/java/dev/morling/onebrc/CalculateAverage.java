@@ -26,7 +26,7 @@ import java.util.stream.Collector;
 
 public class CalculateAverage {
 
-    private static final String FILE = "./measurements.txt";
+    private static final String FILE = "./measurements_test.txt";
 
     private static record Measurement(String station, double value) {
         private Measurement(String[] parts) {
@@ -82,13 +82,12 @@ public class CalculateAverage {
                     return new ResultRow(agg.min, agg.sum / agg.count, agg.max);
                 });
 
-        //System.out.println(Files.lines(Paths.get(FILE)).isParallel());
+        // System.out.println(Files.lines(Paths.get(FILE)).isParallel());
 
         Map<String, ResultRow> measurements = new TreeMap<>(
-            Files.lines(Paths.get(FILE))
-            .map(l -> new Measurement(l.split(";")))
-            .collect(groupingBy(m -> m.station(), collector))
-        );
+                Files.lines(Paths.get(FILE))
+                        .map(l -> new Measurement(l.split(";")))
+                        .collect(groupingBy(m -> m.station(), collector)));
 
         System.out.println(measurements);
     }
