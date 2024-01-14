@@ -18,12 +18,12 @@ package dev.morling.onebrc;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
+import java.util.concurrent.*;
 
 public class CalculateAverage_ericxiao {
 
-    private static final String FILE = "./measurements.txt";
+    private static final String FILE = "./measurements_125M.txt";
 
     private static class Station {
         private double min;
@@ -50,6 +50,13 @@ public class CalculateAverage_ericxiao {
             this.mean = this.sum / this.count;
         }
 
+        public void mergeStation(Station station) {
+            this.min = Math.min(this.min, station.min);
+            this.max = Math.max(this.max, station.max);
+            this.sum += station.sum;
+            this.count += station.count;
+        }
+
         public String toString() {
             return round(min) + "/" + round(mean) + "/" + round(max);
         }
@@ -60,25 +67,92 @@ public class CalculateAverage_ericxiao {
 
     }
 
-    private static Map<String, Station> measurements = new TreeMap<>();
+    static class MyCallable implements Callable<Map<String, Station>> {
 
-    private static void processLine(String line) {
-        String[] rawLine = line.split(";");
-        String station = rawLine[0];
-        double measurement = Double.parseDouble(rawLine[1]);
-        if (measurements.containsKey(station)) {
-            measurements.get(station).setMeasurement(measurement);
+        String fileName;
+        private Map<String, Station> measurements;
+
+        public MyCallable(String fileName) {
+            this.fileName = fileName;
+            this.measurements = new HashMap<>();
         }
-        else {
-            measurements.put(station, new Station(measurement));
+
+        private void processLine(String line) {
+            String[] rawLine = line.split(";");
+            double measurement = Double.parseDouble(rawLine[1]);
+            if (measurements.containsKey(rawLine[0])) {
+                measurements.get(rawLine[0]).setMeasurement(measurement);
+            }
+            else {
+                measurements.put(rawLine[0], new Station(measurement));
+            }
+        }
+
+        @Override
+        public Map<String, Station> call() throws Exception {
+            // Code to be executed in the new thread
+            try {
+                Files.lines(Paths.get(this.fileName)).forEach(this::processLine);
+            }
+            catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            return measurements;
         }
     }
 
-    public static void main(String[] args) throws IOException {
-        Files.lines(Paths.get(FILE)).forEach(CalculateAverage_ericxiao::processLine);
+    public static Map<String, Station> mergeMaps(Map<String, Station> mapA, Map<String, Station> mapB) {
+        mapB.forEach((station, stationMeasurements) -> {
+            if (mapA.containsKey(station)) {
+                mapA.get(station).mergeStation(stationMeasurements);
+            }
+            else {
+                mapA.put(station, stationMeasurements);
+            }
+        });
+        return mapA;
+    }
 
-        measurements.values().forEach(Station::setMean);
+    public static void main(String[] args) throws Exception {
+        // Something wrong with main thread, use 7 for now.
+        int numThreads = Runtime.getRuntime().availableProcessors() - 1; // Use the number of available processors
+        ExecutorService executorService = Executors.newFixedThreadPool(numThreads);
+        List<Callable<Map<String, Station>>> callableTasks = new ArrayList<>();
+        for (int i = 0; i < numThreads; ++i) {
+            MyCallable callableTask = new MyCallable(FILE);
+            callableTasks.add(callableTask);
+        }
 
-        System.out.println(measurements);
+        List<Map<String, Station>> results = new ArrayList<>();
+        try {
+            List<Future<Map<String, Station>>> futures = executorService.invokeAll(callableTasks);
+            for (Future<Map<String, Station>> future : futures) {
+                try {
+                    results.add(future.get());
+
+                }
+                catch (InterruptedException | ExecutionException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
+        finally {
+            executorService.shutdown();
+            Map<String, Station> mapA = results.get(0);
+            for (int i = 1; i < numThreads; ++i) {
+                results.get(i).forEach((station, stationMeasurements) -> {
+                    if (mapA.containsKey(station)) {
+                        mapA.get(station).mergeStation(stationMeasurements);
+                    }
+                    else {
+                        mapA.put(station, stationMeasurements);
+                    }
+                });
+            }
+            System.out.println(mapA);
+        }
     }
 }
