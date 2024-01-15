@@ -26,19 +26,19 @@ public class CalculateAverage_ericxiao {
     private static final String FILE = "./measurements_125M.txt";
 
     private static class Station {
-        private double min;
-        private double max;
-        private double sum;
+        private int min;
+        private int max;
+        private long sum;
         private int count;
 
-        private Station(Double temp) {
+        private Station(int temp) {
             this.min = temp;
             this.max = temp;
             this.sum = temp;
             this.count = 1;
         }
 
-        public void setMeasurement(double value) {
+        public void setMeasurement(int value) {
             this.min = Math.min(this.min, value);
             this.max = Math.max(this.max, value);
             this.sum += value;
@@ -53,7 +53,7 @@ public class CalculateAverage_ericxiao {
         }
 
         public String toString() {
-            return round(min) + "/" + round(this.sum / this.count) + "/" + round(max);
+            return round(min / 10.0) + "/" + round((double) this.sum / this.count / 10.0) + "/" + round(max / 10.0);
         }
 
         private double round(double value) {
@@ -77,8 +77,9 @@ public class CalculateAverage_ericxiao {
 
             String station = line.substring(0, separator);
 
-            String temperature = line.substring(separator + 1);
-            double measurement = Double.parseDouble(temperature);
+            int length = line.length();
+            int measurement = (Integer.parseInt(line.substring(separator + 1, length - 2)) * 10 + // end is - 2, for decimal + one fractional digit.
+                    line.charAt(length - 1) - '0');
 
             if (measurements.containsKey(station)) {
                 measurements.get(station).setMeasurement(measurement);
