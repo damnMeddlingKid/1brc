@@ -15,9 +15,9 @@
  */
 package dev.morling.onebrc;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -92,7 +92,8 @@ public class CalculateAverage_ericxiao {
         public Map<String, Station> call() throws Exception {
             // Code to be executed in the new thread
             try {
-                Files.lines(Paths.get(this.fileName)).forEach(this::processLine);
+                BufferedReader reader = new BufferedReader(new FileReader(this.fileName));
+                reader.lines().forEach(this::processLine);
             }
             catch (IOException e) {
                 throw new RuntimeException(e);
