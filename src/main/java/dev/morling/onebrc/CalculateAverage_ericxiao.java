@@ -104,8 +104,7 @@ public class CalculateAverage_ericxiao {
     }
 
     public static void main(String[] args) throws Exception {
-        // Something wrong with main thread, use 7 for now.
-        int numThreads = Runtime.getRuntime().availableProcessors() - 1; // Use the number of available processors
+        int numThreads = Runtime.getRuntime().availableProcessors(); // Use the number of available processors
         ExecutorService executorService = Executors.newFixedThreadPool(numThreads);
         List<Callable<Map<String, Station>>> callableTasks = new ArrayList<>();
         for (int i = 0; i < numThreads; ++i) {
