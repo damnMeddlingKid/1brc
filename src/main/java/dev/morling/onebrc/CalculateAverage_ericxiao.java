@@ -73,13 +73,18 @@ public class CalculateAverage_ericxiao {
         }
 
         private void processLine(String line) {
-            String[] rawLine = line.split(";");
-            double measurement = Double.parseDouble(rawLine[1]);
-            if (measurements.containsKey(rawLine[0])) {
-                measurements.get(rawLine[0]).setMeasurement(measurement);
+            int separator = line.indexOf(";");
+
+            String station = line.substring(0, separator);
+
+            String temperature = line.substring(separator + 1);
+            double measurement = Double.parseDouble(temperature);
+
+            if (measurements.containsKey(station)) {
+                measurements.get(station).setMeasurement(measurement);
             }
             else {
-                measurements.put(rawLine[0], new Station(measurement));
+                measurements.put(station, new Station(measurement));
             }
         }
 
