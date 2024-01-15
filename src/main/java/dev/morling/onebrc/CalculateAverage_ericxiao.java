@@ -101,18 +101,6 @@ public class CalculateAverage_ericxiao {
         }
     }
 
-    public static Map<String, Station> mergeMaps(Map<String, Station> mapA, Map<String, Station> mapB) {
-        mapB.forEach((station, stationMeasurements) -> {
-            if (mapA.containsKey(station)) {
-                mapA.get(station).mergeStation(stationMeasurements);
-            }
-            else {
-                mapA.put(station, stationMeasurements);
-            }
-        });
-        return mapA;
-    }
-
     public static void main(String[] args) throws Exception {
         // Something wrong with main thread, use 7 for now.
         int numThreads = Runtime.getRuntime().availableProcessors() - 1; // Use the number of available processors
