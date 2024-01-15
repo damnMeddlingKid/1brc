@@ -69,7 +69,7 @@ public class CalculateAverage_ericxiao {
 
         public MyCallable(String fileName) {
             this.fileName = fileName;
-            this.measurements = new HashMap<>();
+            this.measurements = new HashMap<>(10000);
         }
 
         private void processLine(String line) {
