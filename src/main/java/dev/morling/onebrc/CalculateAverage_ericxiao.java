@@ -46,10 +46,6 @@ public class CalculateAverage_ericxiao {
             this.count++;
         }
 
-        public void setMean() {
-            this.mean = this.sum / this.count;
-        }
-
         public void mergeStation(Station station) {
             this.min = Math.min(this.min, station.min);
             this.max = Math.max(this.max, station.max);
@@ -58,7 +54,7 @@ public class CalculateAverage_ericxiao {
         }
 
         public String toString() {
-            return round(min) + "/" + round(mean) + "/" + round(max);
+            return round(min) + "/" + round(this.sum / this.count) + "/" + round(max);
         }
 
         private double round(double value) {
