@@ -28,7 +28,6 @@ public class CalculateAverage_ericxiao {
     private static class Station {
         private double min;
         private double max;
-        private double mean;
         private double sum;
         private int count;
 
