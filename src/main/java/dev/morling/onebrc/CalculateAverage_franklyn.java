@@ -18,6 +18,7 @@ package dev.morling.onebrc;
 import java.io.IOException;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -32,40 +33,148 @@ public class CalculateAverage_franklyn {
     private static class MappedFileReader {
         private MappedByteBuffer buffer;
         private FileChannel fch;
-        private int readSize;
         private long fileSize;
         private long bytesRead;
 
-        public MappedFileReader(FileChannel fch, int readSize) throws IOException {
-            this.fch = fch;
-            this.readSize = readSize;
-            this.fileSize = fch.size();
-            this.bytesRead = 0;
-            this.buffer = fch.map(FileChannel.MapMode.READ_ONLY, 0, readSize);
+        public MappedFileReader(Path filePath, int offset, int length) throws IOException {
+            try(FileChannel fileChannel = (FileChannel) Files.newByteChannel(filePath, EnumSet.of(StandardOpenOption.READ))) {
+                this.fch = fileChannel;
+                this.fileSize = fch.size();
+                this.bytesRead = 0;
+                this.buffer = fch.map(FileChannel.MapMode.READ_ONLY, offset, length);
+            }
         }
 
-        public int get(byte[] readBytes) throws IOException {
-            if (fileSize - bytesRead <= 0) {
+        public int get(byte[] readBytes) {
+            if (fileSize - bytesRead == 0) {
                 return -1;
             }
 
-            int remainingBytes = buffer.limit() - buffer.position();
-            int bytesToRead = Math.min(readBytes.length, remainingBytes);
-            int validBytes = bytesToRead;
-            buffer.get(readBytes, 0, bytesToRead);
-            bytesRead += bytesToRead;
-
-            // If we are done with this chunk of memory, map the next section in.
-            if (readBytes.length > (buffer.limit() - buffer.position())) {
-                long remainingFileBytes = fileSize - bytesRead;
-                int partialRead = (int) Math.min(readBytes.length - bytesToRead, remainingFileBytes);
-                buffer = fch.map(FileChannel.MapMode.READ_ONLY, bytesRead, Math.min(readSize, remainingFileBytes));
-                buffer.get(readBytes, bytesToRead, partialRead);
-                bytesRead += partialRead;
-                validBytes += partialRead;
+            // remove this assertion in production
+            if (fileSize - bytesRead < 0) {
+                throw new IllegalStateException("we've read more bytes than there are in the file.");
             }
 
+            int remainingBytes = buffer.limit() - buffer.position();
+            int validBytes = Math.min(readBytes.length, remainingBytes);
+            buffer.get(readBytes, 0, validBytes);
+            bytesRead += validBytes;
+
             return validBytes;
+        }
+    }
+
+    private static class ReadPosition {
+        public int position;
+        public int bytesRead;
+        public int validBytes;
+
+        public ReadPosition() {
+            this.position = 0;
+            this.bytesRead = 0;
+            this.validBytes = 4096;
+        }
+    }
+
+    private int seekTill(byte[] segment, int validBytes, int start, char delimiter) {
+        // returns either the index of the delimiter or one after the end of the segment
+        while(start < validBytes && (segment[start] ^ delimiter) != 0) start++;
+        return start;
+    }
+
+    private void readTill(MappedFileReader reader, byte[] src, ReadPosition srcHead, byte[] desintation, int destOffset, char delimiter) {
+        int srcStart = srcHead.position;
+
+        if(srcStart == -1) {
+            return;
+        }
+
+        int end = seekTill(src, srcHead.validBytes, srcStart, delimiter);
+        int length = end - srcStart;
+        System.arraycopy(src, srcStart, desintation, destOffset, length);
+        srcHead.bytesRead = length;
+
+        // We've read more than a segment without finding the delimiter
+        if(end == srcHead.validBytes) {
+            srcHead.position = 0;
+            srcHead.validBytes = reader.get(src);
+
+            // We have read all bytes in the mapping.
+            if(srcHead.validBytes == -1) {
+                srcHead.position = -1;
+                return;
+            }
+            end = seekTill(src, srcHead.validBytes, 0, delimiter);
+            System.arraycopy(src, srcStart, desintation, destOffset + length, end);
+            srcHead.bytesRead += end;
+        }
+
+        srcHead.position = end;
+    }
+
+    private static void aggValue(HashMap<String, double[]> aggMap, String key, double value) {
+        // TODO remove this string allocation using an int map
+        aggMap.compute(key, (_, v) -> {
+            if (v == null) {
+                return new double[]{ value, value, value, 1 };
+            }
+            else {
+                v[0] = Math.min(v[0], value);
+                v[1] = Math.max(v[1], value);
+                v[2] = v[2] + value;
+                v[3] = v[3] + 1;
+                return v;
+            }
+        });
+    }
+
+    private void doRead(Path path, int start, int length, boolean isLastRead) throws IOException
+    {
+        HashMap<String, double[]> aggMap = new HashMap<>();
+        MappedFileReader reader = new MappedFileReader(path, start, length);
+
+        ReadPosition parseHead = new ReadPosition();
+        // TODO : get this size from the class
+        byte[] segment = new byte[4096];
+        // TODO : get this size from the class
+        byte[] keyBytes = new byte[100];
+        byte[] valueBytes = new byte[100];
+        boolean partialValue = false;
+        String key = "";
+        double value;
+
+        parseHead.validBytes = reader.get(segment);
+
+        while (true) {
+            readTill(reader, segment, parseHead, keyBytes, 0, ';');
+            if(parseHead.position == -1) {
+                break;
+            }
+            key = new String(keyBytes, 0, parseHead.bytesRead, StandardCharsets.UTF_8);
+            readTill(reader, segment, parseHead, valueBytes, 0, '\n');
+            if(parseHead.position == -1 && !isLastRead) {
+                partialValue = true;
+                break;
+            }
+            value = Double.parseDouble(new String(valueBytes, 0, parseHead.bytesRead, StandardCharsets.UTF_8));
+            aggValue(aggMap, key, value);
+        }
+
+        if(!isLastRead) {
+            reader = new MappedFileReader(path, start + length, 4096);
+            reader.get(segment);
+            ReadPosition position = new ReadPosition();
+            if(!partialValue) {
+                readTill(reader, segment, position, keyBytes, 0, ';');
+                key = new String(keyBytes, 0, parseHead.bytesRead + position.bytesRead, StandardCharsets.UTF_8);
+            }
+            readTill(reader, segment, position, valueBytes, 0, '\n');
+            if(partialValue) {
+                value = Double.parseDouble(new String(valueBytes, 0, parseHead.bytesRead + position.bytesRead, StandardCharsets.UTF_8));
+            } else {
+                value = Double.parseDouble(new String(valueBytes, 0, position.bytesRead, StandardCharsets.UTF_8));
+            }
+            aggValue(aggMap, key, value);
         }
     }
 
@@ -78,13 +187,11 @@ public class CalculateAverage_franklyn {
         // The max mem we can map is 2GB
         final int readSize = segmentSize; //Integer.MAX_VALUE;
 
-        final int numSegmentsToRead = (readSize / segmentSize) - 1; //we read one less segment than what we map so that we can overlap with the next read.
-
         HashMap<String, double[]> aggMap = new HashMap<>();
         byte[] segment = new byte[segmentSize];
 
         try(FileChannel fileChannel = (FileChannel) Files.newByteChannel(measurements, EnumSet.of(StandardOpenOption.READ))) {
-            MappedFileReader reader = new MappedFileReader(fileChannel, (int) Math.min(readSize, fileChannel.size()));
+            MappedFileReader reader = new MappedFileReader(measurements, 0, (int) Math.min(Integer.MAX_VALUE, fileChannel.size()));
 
             int start = 0;
             int end = 0;
