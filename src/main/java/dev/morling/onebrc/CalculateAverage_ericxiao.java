@@ -62,12 +62,12 @@ public class CalculateAverage_ericxiao {
 
     }
 
-    static class MyCallable implements Callable<Map<String, Station>> {
+    static class ProcessFileMap implements Callable<Map<String, Station>> {
 
         String fileName;
         private Map<String, Station> measurements;
 
-        public MyCallable(String fileName) {
+        public ProcessFileMap(String fileName) {
             this.fileName = fileName;
             this.measurements = new HashMap<>(10000);
         }
@@ -108,7 +108,7 @@ public class CalculateAverage_ericxiao {
         ExecutorService executorService = Executors.newFixedThreadPool(numThreads);
         List<Callable<Map<String, Station>>> callableTasks = new ArrayList<>();
         for (int i = 0; i < numThreads; ++i) {
-            MyCallable callableTask = new MyCallable(FILE);
+            ProcessFileMap callableTask = new ProcessFileMap(FILE);
             callableTasks.add(callableTask);
         }
 
