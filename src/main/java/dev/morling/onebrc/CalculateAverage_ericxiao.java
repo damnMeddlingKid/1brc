@@ -15,7 +15,12 @@
  */
 package dev.morling.onebrc;
 
+import sun.misc.Unsafe;
+
 import java.io.IOException;
+import java.lang.foreign.MemoryLayout;
+import java.lang.foreign.MemorySegment;
+import java.lang.reflect.Field;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
@@ -28,6 +33,19 @@ import java.util.concurrent.*;
 public class CalculateAverage_ericxiao {
 
     private static final String FILE = "./measurements.txt";
+
+    private static final Unsafe UNSAFE = initUnsafe();
+
+    private static Unsafe initUnsafe() {
+        try {
+            final Field theUnsafe = Unsafe.class.getDeclaredField("theUnsafe");
+            theUnsafe.setAccessible(true);
+            return (Unsafe) theUnsafe.get(Unsafe.class);
+        }
+        catch (NoSuchFieldException | IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     private static class Station {
         private int min;
@@ -83,7 +101,7 @@ public class CalculateAverage_ericxiao {
 
         private static class MappedFileReader {
             private MappedByteBuffer buffer;
-            private FileChannel fch;
+            public FileChannel fch;
 
             public MappedFileReader(Path filePath, long offset, int length) throws IOException {
                 try (FileChannel fileChannel = (FileChannel) Files.newByteChannel(filePath, EnumSet.of(StandardOpenOption.READ))) {
@@ -116,11 +134,34 @@ public class CalculateAverage_ericxiao {
             }
         }
 
-        private int seekTill(byte[] segment, int validBytes, int start, char delimiter) {
+        private long delimiterMask(long word, long delimiter) {
+            long mask = word ^ delimiter;
+            return (mask - 0x0101010101010101L) & (~mask & 0x8080808080808080L);
+        }
+
+        private int seekTill(byte[] segment, int validBytes, int start, long delimiter) {
             // returns either the index of the delimiter or one after the end of the segment
-            while (start < validBytes && (segment[start] ^ delimiter) != 0)
-                start++;
-            return start;
+            if (validBytes < segment.length) {
+                while (start < validBytes && (segment[start] ^ delimiter) != 0)
+                    start++;
+                return start;
+            }
+
+            MemorySegment memSeg = MemorySegment.ofArray(segment);
+            long address = memSeg.address();
+
+            long word = UNSAFE.getLong(address + start);
+
+            while (word == 0) {
+                start += 8;
+                if (start == segment.length) {
+                    return start;
+                }
+                word = UNSAFE.getLong(address + start);
+                word = delimiterMask(word, delimiter);
+            }
+
+            return start + Long.numberOfLeadingZeros(word) / 8;
         }
 
         private void readTill(MappedFileReader reader, byte[] src, ReadPosition srcHead, byte[] desintation, int destOffset, char delimiter) {
@@ -178,10 +219,14 @@ public class CalculateAverage_ericxiao {
             double value;
 
             HashMap<String, double[]> aggMap = new HashMap<>();
+
+
             MappedFileReader reader = new MappedFileReader(filePath, this.readStart, this.readLength);
             ReadPosition parseHead = new ReadPosition();
 
-            byte[] segment = new byte[this.segmentSize];
+            MemorySegment segmentAddress = MemorySegment.ofArray(new byte[this.segmentSize]);
+            segmentAddress.as
+            //byte[] segment = MemorySegment.ofArray(new byte[this.segmentSize]);
             byte[] keyBytes = new byte[100];
             byte[] valueBytes = new byte[100];
             boolean partialValue = false;
