@@ -97,16 +97,23 @@ public class CalculateAverage_ericxiao {
             int length = (int) (keyEnd - keyStart);
             byte[] keyBytes = new byte[length];
             UNSAFE.copyMemory(null, keyStart, keyBytes, UNSAFE.arrayBaseOffset(byte[].class), length);
+            String key = new String(keyBytes, StandardCharsets.UTF_8);
             long valueStart = keyEnd + 1;
             length = (int) (valueEnd - valueStart);
             byte[] valueBytes = new byte[length];
             UNSAFE.copyMemory(null, valueStart, valueBytes, UNSAFE.arrayBaseOffset(byte[].class), length);
-            Double value = Double.parseDouble(new String(valueBytes, StandardCharsets.UTF_8));
-            hashMap.compute(new String(keyBytes, StandardCharsets.UTF_8), (_, current) -> {
-                if(current == null ) {
-                    return value;
-                } else {
-                    return current + value;
+            double value = Double.parseDouble(new String(valueBytes, StandardCharsets.UTF_8));
+
+            hashMap.compute(key, (_, v) -> {
+                if (v == null) {
+                    return new double[]{ value, value, value, 1 };
+                }
+                else {
+                    v[0] = Math.min(v[0], value);
+                    v[1] = Math.max(v[1], value);
+                    v[2] = v[2] + value;
+                    v[3] = v[3] + 1;
+                    return v;
                 }
             });
         }
@@ -212,6 +219,7 @@ public class CalculateAverage_ericxiao {
         int segmentSize = 4096;
         int readLength = (int) (fileSize / numThreads);
         long readStart = 0;
+
 
         for (int i = 0; i < numThreads - 1; ++i) {
             ProcessFileMap callableTask = new ProcessFileMap(filePath, readStart, readLength, segmentSize, false);
