@@ -101,7 +101,7 @@ public class CalculateAverage_ericxiao {
         private static class KeySlice {
             private byte[] keyData;
             private final int length;
-            private int hash = 0;
+            private final int hash;
             private String key;
 
             public KeySlice(byte[] keyData, int length) {
@@ -139,8 +139,8 @@ public class CalculateAverage_ericxiao {
             int entryLength = (int) (valueEnd - keyStart);
             int keyLength = (int) (keyEnd - keyStart);
             int valueLength = (int) (valueEnd - (keyEnd + 1));
+            // TODO: We've already read all of this memory, we should be able to avoid this copy.
             UNSAFE.copyMemory(null, keyStart, entryBytes, Unsafe.ARRAY_BYTE_BASE_OFFSET, entryLength);
-            // String key = new String(entryBytes, 0, keyLength, StandardCharsets.UTF_8);
             KeySlice key = new KeySlice(entryBytes, keyLength);
             double value = Double.parseDouble(new String(entryBytes, keyLength + 1, valueLength, StandardCharsets.UTF_8));
 
