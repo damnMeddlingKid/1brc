@@ -105,10 +105,10 @@ public class CalculateAverage_ericxiao {
 
             public KeyPool(int size) {
                 keys = new KeySlice[size];
-                for(int i = 0; i < size; i++) {
+                for (int i = 0; i < size; i++) {
                     keys[i] = new KeySlice();
                 }
-                index = size -1;
+                index = size - 1;
             }
 
             public KeySlice get(byte[] keyData, int length) {
@@ -116,6 +116,7 @@ public class CalculateAverage_ericxiao {
             }
 
             public void pop() {
+                keys[index] = null;
                 index--;
             }
         }
@@ -125,9 +126,6 @@ public class CalculateAverage_ericxiao {
             private int length;
             private int hash;
             private String key;
-
-            public KeySlice() {
-            }
 
             public KeySlice set(byte[] keyData, int length) {
                 this.keyData = keyData;
@@ -167,7 +165,6 @@ public class CalculateAverage_ericxiao {
             int valueLength = (int) (valueEnd - (keyEnd + 1));
             // TODO: We've already read all of this memory, we should be able to avoid this copy.
             UNSAFE.copyMemory(null, keyStart, entryBytes, Unsafe.ARRAY_BYTE_BASE_OFFSET, entryLength);
-            //KeySlice key = new KeySlice(entryBytes, keyLength);
             KeySlice key = keyPool.get(entryBytes, keyLength);
             double value = Double.parseDouble(new String(entryBytes, keyLength + 1, valueLength, StandardCharsets.UTF_8));
 
