@@ -18,10 +18,14 @@ package dev.morling.onebrc;
 import sun.misc.Unsafe;
 
 import java.io.IOException;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 import java.lang.reflect.Field;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -72,7 +76,7 @@ public class CalculateAverage_ericxiao {
         private boolean lastRead;
         private boolean firstRead;
 
-        public ProcessFileMap(long readStart, int readEnd, boolean firstRead, boolean lastRead) {
+        public ProcessFileMap(long readStart, long readEnd, boolean firstRead, boolean lastRead) {
             this.readStart = readStart;
             this.readEnd = readEnd;
             this.lastRead = lastRead;
@@ -133,7 +137,6 @@ public class CalculateAverage_ericxiao {
             final long semiColonPattern = 0x3B3B3B3B3B3B3B3BL;
             final long singleNewLinePattern = 0x0AL;
             final long newLinePattern = 0x0A0A0A0A0A0A0A0AL;
-            long keyStartAddress = startAddress;
             long keyEndAddress;
             long valueEndAddress;
 
@@ -143,12 +146,20 @@ public class CalculateAverage_ericxiao {
 
             long byteStart = startAddress;
 
+            // TODO: We might need to consider memory alignment here. we need to be on a 8 byte boundary.
+
+            // We need to skip to the first \n so that we skip partial data. The partial data will be picked up by the previous thread.
+            if(!firstRead) {
+                while (UNSAFE.getByte(byteStart++) != '\n');
+            }
+
+            long keyStartAddress = byteStart;
+
             word = UNSAFE.getLong(byteStart);
             packedBytes += 1;
 
             while(true) {
                 mask = delimiterMask(word, semiColonPattern);
-
                 while (mask == 0 && packedBytes < vectorLoops) {
                     packedBytes += 1;
                     byteStart += 8;
@@ -184,7 +195,7 @@ public class CalculateAverage_ericxiao {
                 //TODO: We might be able to do better here by using popcount on the mask
                 // and then shifting the mask till it is zero.
 
-                // Same as before, we remove the newline charcter so we don't match it again.
+                // Same as before, we remove the newline character so we don't match it again.
                 word ^= singleNewLinePattern << (Long.numberOfTrailingZeros(mask) + 1 - 8);
             }
 
@@ -204,10 +215,18 @@ public class CalculateAverage_ericxiao {
                 }
             }
 
-            // TODO: In the parallel case we need to do one more read here so that we overlap with the next chunk.
+            // we need to do one more read here so that we overlap with the next chunk.
+            if(!lastRead) {
+                byteStart = keyStartAddress;
+                while(UNSAFE.getByte(++byteStart) != ';');
+                keyEndAddress = byteStart;
+                while(UNSAFE.getByte(++byteStart) != '\n');
+                valueEndAddress = byteStart;
+                add(keyStartAddress, keyEndAddress, valueEndAddress);
+            }
+
             return hashMap;
         }
-
     }
 
     public static void main(String[] args) throws Exception {
@@ -215,60 +234,66 @@ public class CalculateAverage_ericxiao {
         ExecutorService executorService = Executors.newFixedThreadPool(numThreads);
         List<Callable<Map<String, double[]>>> callableTasks = new ArrayList<>();
         Path filePath = Path.of(FILE);
-        long fileSize = Files.size(filePath);
-        int segmentSize = 4096;
-        int readLength = (int) (fileSize / numThreads);
-        long readStart = 0;
 
+        try (FileChannel fileChannel = (FileChannel) Files.newByteChannel(filePath, EnumSet.of(StandardOpenOption.READ))) {
+            MemorySegment fileMap = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size(), Arena.global());
 
-        for (int i = 0; i < numThreads - 1; ++i) {
-            ProcessFileMap callableTask = new ProcessFileMap(filePath, readStart, readLength, segmentSize, false);
+            long readStart = fileMap.address();
+            long fileSize = fileChannel.size();
+            long readLength = (fileSize / numThreads);
+
+            callableTasks.add(new ProcessFileMap(readStart, readStart + readLength, true, false));
             readStart += readLength;
-            callableTasks.add(callableTask);
-        }
 
-        callableTasks.add(new ProcessFileMap(filePath, readStart, (int) (fileSize - readStart), segmentSize, true));
-
-        List<Map<String, double[]>> results = new ArrayList<>();
-        try {
-            List<Future<Map<String, double[]>>> futures = executorService.invokeAll(callableTasks);
-            for (Future<Map<String, double[]>> future : futures) {
-                try {
-                    results.add(future.get());
-                }
-                catch (InterruptedException | ExecutionException e) {
-                    e.printStackTrace();
-                }
+            for (int i = 1; i < numThreads - 1; ++i) {
+                ProcessFileMap callableTask = new ProcessFileMap(readStart, readStart + readLength, false, false);
+                readStart += readLength;
+                callableTasks.add(callableTask);
             }
-        }
-        catch (Exception e) {
-            e.printStackTrace();
-        }
-        finally {
-            executorService.shutdown();
-            Map<String, double[]> mapA = results.getFirst();
-            for (int i = 1; i < numThreads; ++i) {
-                results.get(i).forEach((station, stationMeasurements) -> {
-                    if (mapA.containsKey(station)) {
-                        double[] measurements = mapA.get(station);
-                        measurements[0] = Math.min(measurements[0], stationMeasurements[0]);
-                        measurements[1] = Math.max(measurements[1], stationMeasurements[1]);
-                        measurements[2] = measurements[2] + stationMeasurements[2];
-                        measurements[3] = measurements[3] + stationMeasurements[3];
+
+            callableTasks.add(new ProcessFileMap(readStart, readStart + readLength, false, true));
+
+            List<Map<String, double[]>> results = new ArrayList<>();
+            try {
+                List<Future<Map<String, double[]>>> futures = executorService.invokeAll(callableTasks);
+                for (Future<Map<String, double[]>> future : futures) {
+                    try {
+                        results.add(future.get());
                     }
-                    else {
-                        mapA.put(station, stationMeasurements);
+                    catch (InterruptedException | ExecutionException e) {
+                        e.printStackTrace();
                     }
-                });
+                }
             }
-            // print key and values
-
-            for (Map.Entry<String, double[]> entry : mapA.entrySet()) {
-                double[] measurements = entry.getValue();
-                System.out.println("-" + entry.getKey() + ": " + measurements[0] + "/" + measurements[1] + "/" + measurements[2] / measurements[3]);
+            catch (Exception e) {
+                e.printStackTrace();
             }
+            finally {
+                executorService.shutdown();
+                Map<String, double[]> mapA = results.getFirst();
+                for (int i = 1; i < numThreads; ++i) {
+                    results.get(i).forEach((station, stationMeasurements) -> {
+                        if (mapA.containsKey(station)) {
+                            double[] measurements = mapA.get(station);
+                            measurements[0] = Math.min(measurements[0], stationMeasurements[0]);
+                            measurements[1] = Math.max(measurements[1], stationMeasurements[1]);
+                            measurements[2] = measurements[2] + stationMeasurements[2];
+                            measurements[3] = measurements[3] + stationMeasurements[3];
+                        }
+                        else {
+                            mapA.put(station, stationMeasurements);
+                        }
+                    });
+                }
+                // print key and values
 
-            // System.out.println(mapA);
+                for (Map.Entry<String, double[]> entry : mapA.entrySet()) {
+                    double[] measurements = entry.getValue();
+                    System.out.println("-" + entry.getKey() + ": " + measurements[0] + "/" + measurements[1] + "/" + measurements[2] / measurements[3]);
+                }
+
+                // System.out.println(mapA);
+            }
         }
     }
 }
