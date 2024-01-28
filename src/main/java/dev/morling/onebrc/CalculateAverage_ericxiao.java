@@ -32,7 +32,7 @@ public class CalculateAverage_ericxiao {
 
     private static final String FILE = "./measurements.txt";
 
-    static class ProcessFileMap implements Callable<Map<String, double[]>> {
+    static class ProcessFileMap implements Callable<Map<String, long[]>> {
         private long readStart;
         private long readEnd;
         private boolean lastRead;
@@ -48,7 +48,7 @@ public class CalculateAverage_ericxiao {
             this.firstRead = firstRead;
         }
 
-        private final HashMap<String, double[]> hashMap = new HashMap<>();
+        private final HashMap<String, long[]> hashMap = new HashMap<>();
 
         private static Unsafe initUnsafe() {
             try {
@@ -63,21 +63,25 @@ public class CalculateAverage_ericxiao {
 
         public void add(long keyStart, long keyEnd, long valueEnd) {
             int entryLength = (int) (valueEnd - keyStart);
+
             int keyLength = (int) (keyEnd - keyStart);
-            int valueLength = (int) (valueEnd - (keyEnd + 1));
             UNSAFE.copyMemory(null, keyStart, entryBytes, Unsafe.ARRAY_BYTE_BASE_OFFSET, entryLength);
             String key = new String(entryBytes, 0, keyLength, StandardCharsets.UTF_8);
-            double value = Double.parseDouble(new String(entryBytes, keyLength + 1, valueLength, StandardCharsets.UTF_8));
 
-            hashMap.compute(key, (_, v) -> {
+            int valueLength = (int) (valueEnd - (keyEnd + 1));
+            long value = Long.parseLong(new String(entryBytes, keyLength + 1, valueLength - 2, StandardCharsets.UTF_8)) * 10;
+            short decimal = Short.parseShort(new String(entryBytes, entryLength - 1, 1, StandardCharsets.UTF_8));
+            long finalMeasurement = value < 0 ? value - decimal : value + decimal;
+
+            hashMap.compute(key, (k, v) -> {
                 if (v == null) {
-                    return new double[]{ value, value, value, 1 };
+                    return new long[]{ finalMeasurement, finalMeasurement, finalMeasurement, 1 };
                 }
                 else {
-                    v[0] = Math.min(v[0], value);
-                    v[1] = Math.max(v[1], value);
-                    v[2] = v[2] + value;
-                    v[3] = v[3] + 1;
+                    v[0] = Math.min(v[0], finalMeasurement);
+                    v[1] = Math.max(v[1], finalMeasurement);
+                    v[2] += finalMeasurement;
+                    v[3]++;
                     return v;
                 }
             });
@@ -88,11 +92,11 @@ public class CalculateAverage_ericxiao {
             return (mask - 0x0101010101010101L) & (~mask & 0x8080808080808080L);
         }
 
-        public Map<String, double[]> call() {
+        public Map<String, long[]> call() {
             return readMemory(readStart, readEnd);
         }
 
-        private Map<String, double[]> readMemory(long startAddress, long endAddress) {
+        private Map<String, long[]> readMemory(long startAddress, long endAddress) {
             int packedBytes = 0;
             final long singleSemiColonPattern = 0x3BL;
             final long semiColonPattern = 0x3B3B3B3B3B3B3B3BL;
@@ -204,7 +208,7 @@ public class CalculateAverage_ericxiao {
     public static void main(String[] args) throws Exception {
         int numThreads = Runtime.getRuntime().availableProcessors() - 1; // Use the number of available processors
         ExecutorService executorService = Executors.newFixedThreadPool(numThreads);
-        List<Callable<Map<String, double[]>>> callableTasks = new ArrayList<>();
+        List<Callable<Map<String, long[]>>> callableTasks = new ArrayList<>();
         Path filePath = Path.of(FILE);
 
         try (FileChannel fileChannel = (FileChannel) Files.newByteChannel(filePath, EnumSet.of(StandardOpenOption.READ))) {
@@ -225,10 +229,10 @@ public class CalculateAverage_ericxiao {
 
             callableTasks.add(new ProcessFileMap(readStart, readStart + readLength, false, true));
 
-            List<Map<String, double[]>> results = new ArrayList<>();
+            List<Map<String, long[]>> results = new ArrayList<>();
             try {
-                List<Future<Map<String, double[]>>> futures = executorService.invokeAll(callableTasks);
-                for (Future<Map<String, double[]>> future : futures) {
+                List<Future<Map<String, long[]>>> futures = executorService.invokeAll(callableTasks);
+                for (Future<Map<String, long[]>> future : futures) {
                     try {
                         results.add(future.get());
                     }
@@ -243,11 +247,11 @@ public class CalculateAverage_ericxiao {
             finally {
                 executorService.shutdown();
                 // fileChannel.close();
-                Map<String, double[]> mapA = results.getFirst();
+                Map<String, long[]> mapA = results.getFirst();
                 for (int i = 1; i < numThreads; ++i) {
                     results.get(i).forEach((station, stationMeasurements) -> {
                         if (mapA.containsKey(station)) {
-                            double[] measurements = mapA.get(station);
+                            long[] measurements = mapA.get(station);
                             measurements[0] = Math.min(measurements[0], stationMeasurements[0]);
                             measurements[1] = Math.max(measurements[1], stationMeasurements[1]);
                             measurements[2] = measurements[2] + stationMeasurements[2];
@@ -261,9 +265,12 @@ public class CalculateAverage_ericxiao {
                 // print key and values
                 int counter = 1;
                 System.out.print("{");
-                for (Map.Entry<String, double[]> entry : mapA.entrySet()) {
-                    double[] measurements = entry.getValue();
-                    System.out.print(entry.getKey() + "=" + measurements[0] + "/" + String.format("%.1f", measurements[2] / measurements[3]) + "/" + measurements[1]);
+                for (Map.Entry<String, long[]> entry : mapA.entrySet()) {
+                    long[] measurements = entry.getValue();
+                    double mean = (double) measurements[2] / (double) measurements[3];
+                    System.out.print(entry.getKey() + "=" + (measurements[0] / 10.0) + "/"
+                            + (Math.round(mean) / 10.0) + "/"
+                            + (measurements[1]) / 10.0);
                     if (counter++ < mapA.size())
                         System.out.print(", ");
                 }
