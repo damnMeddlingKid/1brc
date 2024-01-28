@@ -17,8 +17,4 @@
 
 
 JAVA_OPTS="--enable-preview -XX:+UnlockExperimentalVMOptions -XX:+TrustFinalNonStaticFields -dsa -XX:+UseNUMA"
-if [[ ! "$(uname -s)" = "Darwin" ]]; then
-    # On OS/X, my machine, this errors:
-    JAVA_OPTS="$JAVA_OPTS -XX:+UseTransparentHugePages"
-fi
 time java $JAVA_OPTS --class-path target/average-1.0.0-SNAPSHOT.jar dev.morling.onebrc.CalculateAverage_ericxiao

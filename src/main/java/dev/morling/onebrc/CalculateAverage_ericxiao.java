@@ -102,12 +102,12 @@ public class CalculateAverage_ericxiao {
 
         public void add(long keyStart, long keyEnd, long valueEnd) {
             int length = (int) (keyEnd - keyStart);
-            UNSAFE.copyMemory(null, keyStart, keyBytes, UNSAFE.arrayBaseOffset(byte[].class), length);
-            String key = new String(keyBytes, StandardCharsets.UTF_8);
+            UNSAFE.copyMemory(null, keyStart, keyBytes, Unsafe.ARRAY_BYTE_BASE_OFFSET, length);
+            String key = new String(keyBytes, 0, length, StandardCharsets.UTF_8);
             long valueStart = keyEnd + 1;
             length = (int) (valueEnd - valueStart);
-            UNSAFE.copyMemory(null, valueStart, valueBytes, UNSAFE.arrayBaseOffset(byte[].class), length);
-            double value = Double.parseDouble(new String(valueBytes, StandardCharsets.UTF_8));
+            UNSAFE.copyMemory(null, valueStart, valueBytes, Unsafe.ARRAY_BYTE_BASE_OFFSET, length);
+            double value = Double.parseDouble(new String(valueBytes, 0, length, StandardCharsets.UTF_8));
 
             hashMap.compute(key, (_, v) -> {
                 if (v == null) {
@@ -283,7 +283,7 @@ public class CalculateAverage_ericxiao {
             }
             finally {
                 executorService.shutdown();
-                //fileChannel.close();
+                // fileChannel.close();
                 Map<String, double[]> mapA = results.getFirst();
                 for (int i = 1; i < numThreads; ++i) {
                     results.get(i).forEach((station, stationMeasurements) -> {
