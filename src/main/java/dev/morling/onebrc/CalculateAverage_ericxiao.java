@@ -15,13 +15,13 @@
  */
 package dev.morling.onebrc;
 
+import sun.misc.Unsafe;
+
 import java.io.IOException;
-import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -67,173 +67,140 @@ public class CalculateAverage_ericxiao {
     }
 
     static class ProcessFileMap implements Callable<Map<String, double[]>> {
-        private Path filePath;
         private long readStart;
-        private int readLength;
-        private int segmentSize;
+        private long readEnd;
         private boolean lastRead;
+        private boolean firstRead;
 
-        public ProcessFileMap(Path filePath, long readStart, int readLength, int segmentSize, boolean lastRead) {
-            this.filePath = filePath;
+        public ProcessFileMap(long readStart, int readEnd, boolean firstRead, boolean lastRead) {
             this.readStart = readStart;
-            this.readLength = readLength;
-            this.segmentSize = segmentSize;
+            this.readEnd = readEnd;
             this.lastRead = lastRead;
+            this.firstRead = firstRead;
         }
 
-        private static class MappedFileReader {
-            private MappedByteBuffer buffer;
-            private FileChannel fch;
+        private final Unsafe UNSAFE = initUnsafe();
+        private final HashMap<String, double[]> hashMap = new HashMap<>();
 
-            public MappedFileReader(Path filePath, long offset, int length) throws IOException {
-                try (FileChannel fileChannel = (FileChannel) Files.newByteChannel(filePath, EnumSet.of(StandardOpenOption.READ))) {
-                    this.fch = fileChannel;
-                    this.buffer = fch.map(FileChannel.MapMode.READ_ONLY, offset, length);
-                }
+        private static Unsafe initUnsafe() {
+            try {
+                final Field theUnsafe = Unsafe.class.getDeclaredField("theUnsafe");
+                theUnsafe.setAccessible(true);
+                return (Unsafe) theUnsafe.get(Unsafe.class);
             }
-
-            public int get(byte[] readBytes) {
-                if (buffer.limit() - buffer.position() == 0) {
-                    return -1;
-                }
-
-                int remainingBytes = buffer.limit() - buffer.position();
-                int validBytes = Math.min(readBytes.length, remainingBytes);
-                buffer.get(readBytes, 0, validBytes);
-                return validBytes;
+            catch (NoSuchFieldException | IllegalAccessException e) {
+                throw new RuntimeException(e);
             }
         }
 
-        private static class ReadPosition {
-            public int position;
-            public int bytesRead;
-            public int validBytes;
-
-            public ReadPosition() {
-                this.position = 0;
-                this.bytesRead = 0;
-                this.validBytes = 4096;
-            }
-        }
-
-        private int seekTill(byte[] segment, int validBytes, int start, char delimiter) {
-            // returns either the index of the delimiter or one after the end of the segment
-            while (start < validBytes && (segment[start] ^ delimiter) != 0)
-                start++;
-            return start;
-        }
-
-        private void readTill(MappedFileReader reader, byte[] src, ReadPosition srcHead, byte[] desintation, int destOffset, char delimiter) {
-            if (srcHead.position == -1) {
-                return;
-            }
-
-            if (srcHead.position == src.length) {
-                srcHead.position = 0;
-                srcHead.validBytes = reader.get(src);
-            }
-
-            int end = seekTill(src, srcHead.validBytes, srcHead.position, delimiter);
-            int length = end - srcHead.position;
-            System.arraycopy(src, srcHead.position, desintation, destOffset, length);
-            srcHead.bytesRead = length;
-
-            // We've read more than a segment without finding the delimiter
-            if (end == srcHead.validBytes) {
-                srcHead.position = 0;
-                srcHead.validBytes = reader.get(src);
-
-                // We have read all bytes in the mapping.
-                if (srcHead.validBytes == -1) {
-                    srcHead.position = -1;
-                    return;
-                }
-
-                end = seekTill(src, srcHead.validBytes, 0, delimiter);
-                System.arraycopy(src, srcHead.position, desintation, destOffset + length, end);
-                srcHead.bytesRead += end;
-            }
-
-            srcHead.position = end;
-        }
-
-        private static void aggValue(HashMap<String, double[]> aggMap, String key, double value) {
-            aggMap.compute(key, (_, v) -> {
-                if (v == null) {
-                    return new double[]{ value, value, value, 1 };
-                }
-                else {
-                    v[0] = Math.min(v[0], value);
-                    v[1] = Math.max(v[1], value);
-                    v[2] = v[2] + value;
-                    v[3] = v[3] + 1;
-                    return v;
+        public void add(long keyStart, long keyEnd, long valueEnd) {
+            int length = (int) (keyEnd - keyStart);
+            byte[] keyBytes = new byte[length];
+            UNSAFE.copyMemory(null, keyStart, keyBytes, UNSAFE.arrayBaseOffset(byte[].class), length);
+            long valueStart = keyEnd + 1;
+            length = (int) (valueEnd - valueStart);
+            byte[] valueBytes = new byte[length];
+            UNSAFE.copyMemory(null, valueStart, valueBytes, UNSAFE.arrayBaseOffset(byte[].class), length);
+            Double value = Double.parseDouble(new String(valueBytes, StandardCharsets.UTF_8));
+            hashMap.compute(new String(keyBytes, StandardCharsets.UTF_8), (_, current) -> {
+                if(current == null ) {
+                    return value;
+                } else {
+                    return current + value;
                 }
             });
         }
 
-        @Override
-        public Map<String, double[]> call() throws IOException {
-            String key = "";
-            double value;
-
-            HashMap<String, double[]> aggMap = new HashMap<>();
-            MappedFileReader reader = new MappedFileReader(filePath, this.readStart, this.readLength);
-            ReadPosition parseHead = new ReadPosition();
-
-            byte[] segment = new byte[this.segmentSize];
-            byte[] keyBytes = new byte[100];
-            byte[] valueBytes = new byte[100];
-            boolean partialValue = false;
-
-            parseHead.validBytes = reader.get(segment);
-
-            if (this.readStart != 0) {
-                parseHead.position = seekTill(segment, parseHead.validBytes, 0, '\n');
-                parseHead.position++;
-            }
-
-            while (true) {
-                readTill(reader, segment, parseHead, keyBytes, 0, ';');
-                if (parseHead.position == -1) {
-                    break;
-                }
-                key = new String(keyBytes, 0, parseHead.bytesRead, StandardCharsets.UTF_8);
-                parseHead.position++;
-                parseHead.bytesRead = 0;
-                readTill(reader, segment, parseHead, valueBytes, 0, '\n');
-                if (parseHead.position == -1 && !lastRead) {
-                    partialValue = true;
-                    break;
-                }
-                value = Double.parseDouble(new String(valueBytes, 0, parseHead.bytesRead, StandardCharsets.UTF_8));
-                parseHead.position++;
-                parseHead.bytesRead = 0;
-                aggValue(aggMap, key, value);
-            }
-
-            if (!lastRead) {
-                reader = new MappedFileReader(filePath, readStart + readLength, 4096);
-                reader.get(segment);
-                ReadPosition head = new ReadPosition();
-                if (!partialValue) {
-                    readTill(reader, segment, head, keyBytes, parseHead.bytesRead, ';');
-                    key = new String(keyBytes, 0, parseHead.bytesRead + head.bytesRead, StandardCharsets.UTF_8);
-                }
-                if (partialValue) {
-                    readTill(reader, segment, head, valueBytes, 0, '\n');
-                    value = Double.parseDouble(new String(valueBytes, 0, parseHead.bytesRead + head.bytesRead, StandardCharsets.UTF_8));
-                }
-                else {
-                    head.position++;
-                    readTill(reader, segment, head, valueBytes, 0, '\n');
-                    value = Double.parseDouble(new String(valueBytes, 0, head.bytesRead, StandardCharsets.UTF_8));
-                }
-                aggValue(aggMap, key, value);
-            }
-
-            return aggMap;
+        private long delimiterMask(long word, long delimiter) {
+            long mask = word ^ delimiter;
+            return (mask - 0x0101010101010101L) & (~mask & 0x8080808080808080L);
         }
+
+        public Map<String, double[]> call() {
+            return readMemory(readStart, readEnd);
+        }
+
+        private Map<String, double[]> readMemory(long startAddress, long endAddress) {
+            int packedBytes = 0;
+            final long singleSemiColonPattern = 0x3BL;
+            final long semiColonPattern = 0x3B3B3B3B3B3B3B3BL;
+            final long singleNewLinePattern = 0x0AL;
+            final long newLinePattern = 0x0A0A0A0A0A0A0A0AL;
+            long keyStartAddress = startAddress;
+            long keyEndAddress;
+            long valueEndAddress;
+
+            final int vectorLoops = (int) (endAddress - startAddress) / 8;
+            long word;
+            long mask;
+
+            long byteStart = startAddress;
+
+            word = UNSAFE.getLong(byteStart);
+            packedBytes += 1;
+
+            while(true) {
+                mask = delimiterMask(word, semiColonPattern);
+
+                while (mask == 0 && packedBytes < vectorLoops) {
+                    packedBytes += 1;
+                    byteStart += 8;
+                    word = UNSAFE.getLong(byteStart);
+                    mask = delimiterMask(word, semiColonPattern);
+                }
+
+                if(packedBytes == vectorLoops) break;
+
+                keyEndAddress = byteStart + (Long.numberOfTrailingZeros(mask) / 8);
+
+                // Once we find the semicolon we remove it from the word
+                // so that we can find multiple semicolons in the same word.
+                word ^= singleSemiColonPattern << (Long.numberOfTrailingZeros(mask) + 1 - 8);
+
+                // The new line pattern could be located in the same byte we found the key in.
+                // so we need to check if the value is in this byte.
+                mask = delimiterMask(word, newLinePattern);
+
+                while (mask == 0 && packedBytes < vectorLoops) {
+                    packedBytes += 1;
+                    byteStart += 8;
+                    word = UNSAFE.getLong(byteStart);
+                    mask = delimiterMask(word, newLinePattern);
+                }
+
+                if(packedBytes == vectorLoops) break;
+
+                valueEndAddress = byteStart + (Long.numberOfTrailingZeros(mask) / 8);
+                add(keyStartAddress, keyEndAddress, valueEndAddress);
+                keyStartAddress = valueEndAddress + 1;
+
+                //TODO: We might be able to do better here by using popcount on the mask
+                // and then shifting the mask till it is zero.
+
+                // Same as before, we remove the newline charcter so we don't match it again.
+                word ^= singleNewLinePattern << (Long.numberOfTrailingZeros(mask) + 1 - 8);
+            }
+
+            // We do scalar reads here for the remaining values.
+            byteStart = keyStartAddress;
+
+            while(byteStart < endAddress) {
+                byte value = UNSAFE.getByte(byteStart);
+                if(value == ';') {
+                    keyEndAddress = byteStart;
+                    while(UNSAFE.getByte(++byteStart) != '\n');
+                    valueEndAddress = byteStart;
+                    add(keyStartAddress, keyEndAddress, valueEndAddress);
+                    keyStartAddress = valueEndAddress + 1;
+                } else {
+                    byteStart++;
+                }
+            }
+
+            // TODO: In the parallel case we need to do one more read here so that we overlap with the next chunk.
+            return hashMap;
+        }
+
     }
 
     public static void main(String[] args) throws Exception {
