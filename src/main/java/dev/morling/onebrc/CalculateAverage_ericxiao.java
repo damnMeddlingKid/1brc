@@ -140,7 +140,6 @@ public class CalculateAverage_ericxiao {
             long keyEndAddress;
             long valueEndAddress;
 
-            final int vectorLoops = (int) (endAddress - startAddress) / 8;
             long word;
             long mask;
 
@@ -149,16 +148,23 @@ public class CalculateAverage_ericxiao {
             // TODO: We might need to consider memory alignment here. we need to be on a 8 byte boundary.
 
             // We need to skip to the first \n so that we skip partial data. The partial data will be picked up by the previous thread.
-            if(!firstRead) {
-                while (UNSAFE.getByte(byteStart++) != '\n');
+            if (!firstRead) {
+                while (UNSAFE.getByte(byteStart++) != '\n')
+                    ;
             }
 
             long keyStartAddress = byteStart;
 
+            while (byteStart % 8 != 0) {
+                byteStart++;
+            }
+
+            final int vectorLoops = (int) (endAddress - byteStart) / 8;
+
             word = UNSAFE.getLong(byteStart);
             packedBytes += 1;
 
-            while(true) {
+            while (true) {
                 mask = delimiterMask(word, semiColonPattern);
                 while (mask == 0 && packedBytes < vectorLoops) {
                     packedBytes += 1;
@@ -167,7 +173,8 @@ public class CalculateAverage_ericxiao {
                     mask = delimiterMask(word, semiColonPattern);
                 }
 
-                if(packedBytes == vectorLoops) break;
+                if (packedBytes == vectorLoops)
+                    break;
 
                 keyEndAddress = byteStart + (Long.numberOfTrailingZeros(mask) / 8);
 
@@ -186,13 +193,14 @@ public class CalculateAverage_ericxiao {
                     mask = delimiterMask(word, newLinePattern);
                 }
 
-                if(packedBytes == vectorLoops) break;
+                if (packedBytes == vectorLoops)
+                    break;
 
                 valueEndAddress = byteStart + (Long.numberOfTrailingZeros(mask) / 8);
                 add(keyStartAddress, keyEndAddress, valueEndAddress);
                 keyStartAddress = valueEndAddress + 1;
 
-                //TODO: We might be able to do better here by using popcount on the mask
+                // TODO: We might be able to do better here by using popcount on the mask
                 // and then shifting the mask till it is zero.
 
                 // Same as before, we remove the newline character so we don't match it again.
@@ -202,25 +210,29 @@ public class CalculateAverage_ericxiao {
             // We do scalar reads here for the remaining values.
             byteStart = keyStartAddress;
 
-            while(byteStart < endAddress) {
+            while (byteStart < endAddress) {
                 byte value = UNSAFE.getByte(byteStart);
-                if(value == ';') {
+                if (value == ';') {
                     keyEndAddress = byteStart;
-                    while(UNSAFE.getByte(++byteStart) != '\n');
+                    while (UNSAFE.getByte(++byteStart) != '\n')
+                        ;
                     valueEndAddress = byteStart;
                     add(keyStartAddress, keyEndAddress, valueEndAddress);
                     keyStartAddress = valueEndAddress + 1;
-                } else {
+                }
+                else {
                     byteStart++;
                 }
             }
 
             // we need to do one more read here so that we overlap with the next chunk.
-            if(!lastRead) {
+            if (!lastRead) {
                 byteStart = keyStartAddress;
-                while(UNSAFE.getByte(++byteStart) != ';');
+                while (UNSAFE.getByte(++byteStart) != ';')
+                    ;
                 keyEndAddress = byteStart;
-                while(UNSAFE.getByte(++byteStart) != '\n');
+                while (UNSAFE.getByte(++byteStart) != '\n')
+                    ;
                 valueEndAddress = byteStart;
                 add(keyStartAddress, keyEndAddress, valueEndAddress);
             }
