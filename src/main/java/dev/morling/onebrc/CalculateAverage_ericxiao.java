@@ -302,13 +302,15 @@ public class CalculateAverage_ericxiao {
                     });
                 }
                 // print key and values
-
+                int counter = 1;
+                System.out.println("{");
                 for (Map.Entry<String, double[]> entry : mapA.entrySet()) {
                     double[] measurements = entry.getValue();
-                    System.out.println("-" + entry.getKey() + ": " + measurements[0] + "/" + measurements[1] + "/" + measurements[2] / measurements[3]);
+                    System.out.print(entry.getKey() + "=" + measurements[0] + "/" + String.format("%.1f", measurements[2] / measurements[3]) + "/" + measurements[1]);
+                    if (counter++ < mapA.size())
+                        System.out.print(", ");
                 }
-
-                // System.out.println(mapA);
+                System.out.print("}");
             }
         }
     }
