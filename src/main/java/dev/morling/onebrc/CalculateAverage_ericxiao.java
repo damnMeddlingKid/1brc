@@ -77,6 +77,7 @@ public class CalculateAverage_ericxiao {
         byte[] entryBytes = new byte[512];
 
         private static final Unsafe UNSAFE = initUnsafe();
+        private final KeyPool keyPool = new KeyPool(512);
 
         public ProcessFileMap(long readStart, long readEnd, boolean firstRead, boolean lastRead) {
             this.readStart = readStart;
@@ -98,13 +99,37 @@ public class CalculateAverage_ericxiao {
             }
         }
 
+        private static class KeyPool {
+            private final KeySlice[] keys;
+            private int index;
+
+            public KeyPool(int size) {
+                keys = new KeySlice[size];
+                for(int i = 0; i < size; i++) {
+                    keys[i] = new KeySlice();
+                }
+                index = size -1;
+            }
+
+            public KeySlice get(byte[] keyData, int length) {
+                return keys[index].set(keyData, length);
+            }
+
+            public void pop() {
+                index--;
+            }
+        }
+
         private static class KeySlice {
             private byte[] keyData;
-            private final int length;
-            private final int hash;
+            private int length;
+            private int hash;
             private String key;
 
-            public KeySlice(byte[] keyData, int length) {
+            public KeySlice() {
+            }
+
+            public KeySlice set(byte[] keyData, int length) {
                 this.keyData = keyData;
                 this.length = length;
                 int calcHash = 0;
@@ -112,6 +137,7 @@ public class CalculateAverage_ericxiao {
                     calcHash = 31 * calcHash + keyData[i];
                 }
                 this.hash = calcHash;
+                return this;
             }
 
             @Override
@@ -141,12 +167,14 @@ public class CalculateAverage_ericxiao {
             int valueLength = (int) (valueEnd - (keyEnd + 1));
             // TODO: We've already read all of this memory, we should be able to avoid this copy.
             UNSAFE.copyMemory(null, keyStart, entryBytes, Unsafe.ARRAY_BYTE_BASE_OFFSET, entryLength);
-            KeySlice key = new KeySlice(entryBytes, keyLength);
+            //KeySlice key = new KeySlice(entryBytes, keyLength);
+            KeySlice key = keyPool.get(entryBytes, keyLength);
             double value = Double.parseDouble(new String(entryBytes, keyLength + 1, valueLength, StandardCharsets.UTF_8));
 
             hashMap.compute(key, (k, v) -> {
                 if (v == null) {
                     k.materialize();
+                    keyPool.pop();
                     return new double[]{ value, value, value, 1 };
                 }
                 else {
