@@ -123,7 +123,7 @@ public class CalculateAverage_ericxiao {
             });
         }
 
-        private long delimiterMask(long word, long delimiter) {
+        private static long delimiterMask(long word, long delimiter) {
             long mask = word ^ delimiter;
             return (mask - 0x0101010101010101L) & (~mask & 0x8080808080808080L);
         }
@@ -156,9 +156,11 @@ public class CalculateAverage_ericxiao {
 
             long keyStartAddress = byteStart;
 
-            while (byteStart % 8 != 0) {
-                byteStart++;
-            }
+            // while (byteStart % 8 != 0) {
+            // byteStart++;
+            // }
+
+            byteStart = (byteStart + 7) & ~7;
 
             final int vectorLoops = (int) (endAddress - byteStart) / 8;
 
@@ -243,7 +245,7 @@ public class CalculateAverage_ericxiao {
     }
 
     public static void main(String[] args) throws Exception {
-        int numThreads = Runtime.getRuntime().availableProcessors(); // Use the number of available processors
+        int numThreads = Runtime.getRuntime().availableProcessors() - 1; // Use the number of available processors
         ExecutorService executorService = Executors.newFixedThreadPool(numThreads);
         List<Callable<Map<String, double[]>>> callableTasks = new ArrayList<>();
         Path filePath = Path.of(FILE);
