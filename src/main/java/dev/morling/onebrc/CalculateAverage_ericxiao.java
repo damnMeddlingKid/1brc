@@ -75,6 +75,10 @@ public class CalculateAverage_ericxiao {
         private long readEnd;
         private boolean lastRead;
         private boolean firstRead;
+        byte[] keyBytes = new byte[100];
+        byte[] valueBytes = new byte[100];
+
+        private static final Unsafe UNSAFE = initUnsafe();
 
         public ProcessFileMap(long readStart, long readEnd, boolean firstRead, boolean lastRead) {
             this.readStart = readStart;
@@ -83,7 +87,6 @@ public class CalculateAverage_ericxiao {
             this.firstRead = firstRead;
         }
 
-        private final Unsafe UNSAFE = initUnsafe();
         private final HashMap<String, double[]> hashMap = new HashMap<>();
 
         private static Unsafe initUnsafe() {
@@ -99,12 +102,10 @@ public class CalculateAverage_ericxiao {
 
         public void add(long keyStart, long keyEnd, long valueEnd) {
             int length = (int) (keyEnd - keyStart);
-            byte[] keyBytes = new byte[length];
             UNSAFE.copyMemory(null, keyStart, keyBytes, UNSAFE.arrayBaseOffset(byte[].class), length);
             String key = new String(keyBytes, StandardCharsets.UTF_8);
             long valueStart = keyEnd + 1;
             length = (int) (valueEnd - valueStart);
-            byte[] valueBytes = new byte[length];
             UNSAFE.copyMemory(null, valueStart, valueBytes, UNSAFE.arrayBaseOffset(byte[].class), length);
             double value = Double.parseDouble(new String(valueBytes, StandardCharsets.UTF_8));
 
@@ -282,6 +283,7 @@ public class CalculateAverage_ericxiao {
             }
             finally {
                 executorService.shutdown();
+                //fileChannel.close();
                 Map<String, double[]> mapA = results.getFirst();
                 for (int i = 1; i < numThreads; ++i) {
                     results.get(i).forEach((station, stationMeasurements) -> {
