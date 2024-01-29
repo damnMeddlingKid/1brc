@@ -32,43 +32,6 @@ public class CalculateAverage_ericxiao {
 
     private static final String FILE = "./measurements.txt";
 
-    private static class Station {
-        private int min;
-        private int max;
-        private long sum;
-        private int count;
-
-        private Station(int temp) {
-            this.min = temp;
-            this.max = temp;
-            this.sum = temp;
-            this.count = 1;
-        }
-
-        public void setMeasurement(int value) {
-            this.min = Math.min(this.min, value);
-            this.max = Math.max(this.max, value);
-            this.sum += value;
-            this.count++;
-        }
-
-        public void mergeStation(Station station) {
-            this.min = Math.min(this.min, station.min);
-            this.max = Math.max(this.max, station.max);
-            this.sum += station.sum;
-            this.count += station.count;
-        }
-
-        public String toString() {
-            return round(min / 10.0) + "/" + round((double) this.sum / this.count / 10.0) + "/" + round(max / 10.0);
-        }
-
-        private double round(double value) {
-            return Math.round(value * 10.0) / 10.0;
-        }
-
-    }
-
     static class ProcessFileMap implements Callable<Map<ProcessFileMap.KeySlice, double[]>> {
         private long readStart;
         private long readEnd;
