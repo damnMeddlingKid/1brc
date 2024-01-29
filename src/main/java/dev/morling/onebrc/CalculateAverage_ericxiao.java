@@ -109,17 +109,21 @@ public class CalculateAverage_ericxiao {
 
             final byte negativeSign = '-';
             final byte periodSign = '.';
-            int accumulator = 0;
-            int multiplier = 1;
 
-            for (int i = keyLength + 1; i <= keyLength + valueLength; ++i) {
-                if (entryBytes[i] == negativeSign) {
-                    multiplier = -1;
-                }
-                else if (entryBytes[i] != periodSign)
+            int accumulator = 0;
+            short multiplier = 1;
+            if (entryBytes[keyLength + 1] == negativeSign) {
+                multiplier = -1;
+            }
+            else {
+                accumulator = entryBytes[keyLength + 1] - '0';
+            }
+
+            for (int i = keyLength + 2; i <= keyLength + valueLength; ++i) {
+                if (entryBytes[i] != periodSign)
                     accumulator = accumulator * 10 + entryBytes[i] - '0';
             }
-            int value = multiplier == -1 ? -accumulator : accumulator;
+            int value = multiplier * accumulator;
 
             hashMap.compute(key, (k, v) -> {
                 if (v == null) {
