@@ -100,12 +100,26 @@ public class CalculateAverage_ericxiao {
 
         public void add(long keyStart, long keyEnd, long valueEnd) {
             int entryLength = (int) (valueEnd - keyStart);
+
             int keyLength = (int) (keyEnd - keyStart);
-            int valueLength = (int) (valueEnd - (keyEnd + 1));
             UNSAFE.copyMemory(null, keyStart, entryBytes, Unsafe.ARRAY_BYTE_BASE_OFFSET, entryLength);
-            // String key = new String(entryBytes, 0, keyLength, StandardCharsets.UTF_8);
             KeySlice key = new KeySlice(entryBytes, keyLength);
-            double value = Double.parseDouble(new String(entryBytes, keyLength + 1, valueLength, StandardCharsets.UTF_8));
+
+            int valueLength = (int) (valueEnd - (keyEnd + 1));
+
+            final byte negativeSign = '-';
+            final byte periodSign = '.';
+            double accumulator = 0;
+            double multiplier = 1;
+
+            for (int i = keyLength + 1; i <= keyLength + valueLength; ++i) {
+                if (entryBytes[i] == negativeSign) {
+                    multiplier = -1;
+                }
+                else if (entryBytes[i] != periodSign)
+                    accumulator = accumulator * 10 + entryBytes[i] - '0';
+            }
+            double value = multiplier == -1 ? -accumulator : accumulator;
 
             hashMap.compute(key, (k, v) -> {
                 if (v == null) {
@@ -115,8 +129,8 @@ public class CalculateAverage_ericxiao {
                 else {
                     v[0] = Math.min(v[0], value);
                     v[1] = Math.max(v[1], value);
-                    v[2] = v[2] + value;
-                    v[3] = v[3] + 1;
+                    v[2] += value;
+                    v[3]++;
                     return v;
                 }
             });
@@ -302,7 +316,10 @@ public class CalculateAverage_ericxiao {
                 System.out.print("{");
                 for (Map.Entry<ProcessFileMap.KeySlice, double[]> entry : mapA.entrySet()) {
                     double[] measurements = entry.getValue();
-                    System.out.print(entry.getKey().key + "=" + measurements[0] + "/" + String.format("%.1f", measurements[2] / measurements[3]) + "/" + measurements[1]);
+                    double mean = measurements[2] / measurements[3];
+                    System.out.print(entry.getKey().key + "=" + (measurements[0] / 10.0) + "/"
+                            + (Math.round(mean) / 10.0) + "/"
+                            + (measurements[1]) / 10.0);
                     if (counter++ < mapA.size())
                         System.out.print(", ");
                 }
