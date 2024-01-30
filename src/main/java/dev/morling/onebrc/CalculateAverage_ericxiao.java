@@ -61,6 +61,83 @@ public class CalculateAverage_ericxiao {
             }
         }
 
+        private final static class PackedReader implements Reader {
+            private long[] packedWords;
+            private int hash;
+
+            public PackedReader of(long[] packedWords) {
+                this.packedWords = packedWords;
+                return this;
+            }
+
+            public int hashCode(int keyLength) {
+                int wordIndex = 0;
+                int byteIndex = 0;
+                long word = packedWords[wordIndex];
+                // TODO: we should be able to do this with an int;
+                long calcHash = 0;
+
+                while (byteIndex < keyLength) {
+                    calcHash = 31 * calcHash + (word & 0xFF);
+                    word >>>= 8;
+                    byteIndex++;
+                    if ((byteIndex & 7) == 0) {
+                        word = packedWords[++wordIndex];
+                    }
+                }
+
+                return (int) calcHash;
+            }
+
+            public String getKey(int keyLength) {
+                // read the first keyLength bytes from the packed words as a string.
+                StringBuilder sb = new StringBuilder(keyLength);
+                int wordIndex = 0;
+                int byteIndex = 0;
+                long word = packedWords[wordIndex];
+                while (byteIndex < keyLength) {
+                    sb.append((char) (word & 0xFF));
+                    word >>>= 8;
+                    byteIndex++;
+                    if ((byteIndex & 7) == 0) {
+                        word = packedWords[++wordIndex];
+                    }
+                }
+                return sb.toString();
+            }
+
+            public int getValue(int valueStart, int valueEnd) {
+                int byteIndex = valueStart;
+                int wordIndex = valueStart / 8;
+                long word = packedWords[wordIndex];
+                word >>>= (valueStart & 7) * 8;
+
+                // TODO: we should be able to do this with an int;
+                long accumulator = 0;
+                short multiplier = 1;
+                if ((word & 0xFF) == '-') {
+                    multiplier = -1;
+                }
+                else {
+                    accumulator = (word & 0xFF) - '0';
+                }
+
+                byteIndex++;
+
+                while (byteIndex < valueEnd) {
+                    word >>>= 8;
+                    accumulator = accumulator * 10 + (word & 0xFF) - '0';
+                    byteIndex++;
+                    if ((byteIndex & 7) == 0) {
+                        word = packedWords[++wordIndex];
+                    }
+                }
+
+                accumulator += '0' - '.';
+                return (int) (multiplier * accumulator);
+            }
+        }
+
         private static class KeySlice {
             private byte[] keyData;
             private final int length;
