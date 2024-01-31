@@ -55,6 +55,18 @@ public class CalculateAverage_ericxiao {
             return measurements[idx + 3] != 0;
         }
 
+        void insertStationFast(int idx, String station, int value) {
+            int idxOffset = idx * MEASUREMENT_SIZE;
+            measurements[idxOffset] = value;
+            measurements[idxOffset + 1] = value;
+            measurements[idxOffset + 2] = value;
+            measurements[idxOffset + 3] = 1;
+
+            stationNames[stationPointer] = station;
+            stationOriginalIdxs[stationPointer] = idx;
+            stationPointer++;
+        }
+
         void insertStation(int hash, String station, int min, int max, int sum, int count) {
             int idx = hash * MEASUREMENT_SIZE;
             measurements[idx] = min;
@@ -67,12 +79,20 @@ public class CalculateAverage_ericxiao {
             stationPointer++;
         }
 
-        void updateStation(int hash, int min, int max, int sum, int count) {
-            int idx = hash * MEASUREMENT_SIZE;
-            measurements[idx] = Math.min(measurements[idx], min);
-            measurements[idx + 1] = Math.max(measurements[idx + 1], max);
-            measurements[idx + 2] += sum;
-            measurements[idx + 3] += count;
+        void updateStation(int idx, int value) {
+            int idxOffset = idx * MEASUREMENT_SIZE;
+            measurements[idxOffset] = Math.min(measurements[idxOffset], value);
+            measurements[idxOffset + 1] = Math.max(measurements[idxOffset + 1], value);
+            measurements[idxOffset + 2] += value;
+            measurements[idxOffset + 3] += 1;
+        }
+
+        void mergeStation(int idx, int min, int max, int sum, int count) {
+            int idxOffset = idx * MEASUREMENT_SIZE;
+            measurements[idxOffset] = Math.min(measurements[idxOffset], min);
+            measurements[idxOffset + 1] = Math.max(measurements[idxOffset + 1], max);
+            measurements[idxOffset + 2] += sum;
+            measurements[idxOffset + 3] += count;
         }
     }
 
@@ -138,11 +158,11 @@ public class CalculateAverage_ericxiao {
 
             int hash = Math.abs(stationHash) & (MAP_SIZE - 1);
             if (stations.stationExists(hash)) {
-                stations.updateStation(hash, value, value, value, 1);
+                stations.updateStation(hash, value);
             }
             else {
                 String station = new String(entryBytes, 0, keyLength, StandardCharsets.UTF_8);
-                stations.insertStation(hash, station, value, value, value, 1);
+                stations.insertStationFast(hash, station, value);
             }
         }
 
@@ -317,7 +337,7 @@ public class CalculateAverage_ericxiao {
                         int sum = currStation.measurements[idx + 2];
                         int count = currStation.measurements[idx + 3];
                         if (station1.stationExists(currStationHash))
-                            station1.updateStation(currStationHash, min, max, sum, count);
+                            station1.mergeStation(currStationHash, min, max, sum, count);
                         else
                             station1.insertStation(currStationHash, currStation.stationNames[j], min, max, sum, count);
                     }
