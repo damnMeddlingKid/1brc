@@ -37,7 +37,7 @@ public class CalculateAverage_ericxiao {
     private static class Stations {
 
         private int stationPointer = 0;
-        private final int[] stationHashes = new int[MAP_SIZE];
+        private final int[] stationOriginalIdxs = new int[MAP_SIZE];
         private final String[] stationNames = new String[MAP_SIZE];
         /*
          * i + 0, min
@@ -63,7 +63,7 @@ public class CalculateAverage_ericxiao {
             measurements[idx + 3] = count;
 
             stationNames[stationPointer] = station;
-            stationHashes[stationPointer] = hash;
+            stationOriginalIdxs[stationPointer] = hash;
             stationPointer++;
         }
 
@@ -310,7 +310,7 @@ public class CalculateAverage_ericxiao {
                 for (int i = 1; i < numThreads; ++i) {
                     Stations currStation = results.get(i);
                     for (int j = 0; j < currStation.stationPointer; j++) {
-                        int currStationHash = currStation.stationHashes[j];
+                        int currStationHash = currStation.stationOriginalIdxs[j];
                         int idx = currStationHash * currStation.MEASUREMENT_SIZE;
                         int min = currStation.measurements[idx];
                         int max = currStation.measurements[idx + 1];
@@ -325,7 +325,7 @@ public class CalculateAverage_ericxiao {
                 // print key and values
                 System.out.print("{");
                 for (int i = 0; i < station1.stationPointer - 1; i++) {
-                    int idx = station1.stationHashes[i] * station1.MEASUREMENT_SIZE;
+                    int idx = station1.stationOriginalIdxs[i] * station1.MEASUREMENT_SIZE;
                     int min = station1.measurements[idx];
                     int max = station1.measurements[idx + 1];
                     int sum = station1.measurements[idx + 2];
@@ -338,7 +338,7 @@ public class CalculateAverage_ericxiao {
                                     + ", ");
                 }
 
-                int idx = station1.stationHashes[station1.stationPointer - 1] * station1.MEASUREMENT_SIZE;
+                int idx = station1.stationOriginalIdxs[station1.stationPointer - 1] * station1.MEASUREMENT_SIZE;
                 int min = station1.measurements[idx];
                 int max = station1.measurements[idx + 1];
                 int sum = station1.measurements[idx + 2];
