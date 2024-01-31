@@ -162,7 +162,8 @@ public class CalculateAverage_ericxiao {
 
             int byteIndex;
 
-            while (byteStart < endAddress) {
+            //TODO: bounds are wrong here
+            while (byteStart < endAddress - 1) {
                 byteIndex = 0;
                 while ((entryBytes[byteIndex++] = UNSAFE.getByte(++byteStart)) != ';')
                     ;
@@ -182,7 +183,7 @@ public class CalculateAverage_ericxiao {
     }
 
     public static void main(String[] args) throws Exception {
-        int numThreads = Runtime.getRuntime().availableProcessors() - 1; // Use the number of available processors
+        int numThreads = Runtime.getRuntime().availableProcessors(); // Use the number of available processors
         ExecutorService executorService = Executors.newFixedThreadPool(numThreads);
         List<Callable<Map<ProcessFileMap.KeySlice, int[]>>> callableTasks = new ArrayList<>();
         Path filePath = Path.of(FILE);
