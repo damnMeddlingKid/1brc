@@ -94,6 +94,19 @@ public class CalculateAverage_ericxiao {
             measurements[idxOffset + 2] += sum;
             measurements[idxOffset + 3] += count;
         }
+
+        void printStation(int stationPtr) {
+            int idxOffset = stationOriginalIdxs[stationPtr] * MEASUREMENT_SIZE;
+            int min = measurements[idxOffset];
+            int max = measurements[idxOffset + 1];
+            int sum = measurements[idxOffset + 2];
+            int count = measurements[idxOffset + 3];
+            System.out.print(
+                    stationNames[stationPtr] + "="
+                            + (min / 10.0) + "/"
+                            + (Math.round((double) sum / (double) count) / 10.0) + "/"
+                            + (max / 10.0));
+        }
     }
 
     static class ProcessFileMap implements Callable<Stations> {
@@ -342,33 +355,14 @@ public class CalculateAverage_ericxiao {
                             station1.insertStation(currStationHash, currStation.stationNames[j], min, max, sum, count);
                     }
                 }
-                // print key and values
+
+                // print key and values'
                 System.out.print("{");
                 for (int i = 0; i < station1.stationPointer - 1; i++) {
-                    int idx = station1.stationOriginalIdxs[i] * station1.MEASUREMENT_SIZE;
-                    int min = station1.measurements[idx];
-                    int max = station1.measurements[idx + 1];
-                    int sum = station1.measurements[idx + 2];
-                    int count = station1.measurements[idx + 3];
-                    System.out.print(
-                            station1.stationNames[i] + "="
-                                    + (min / 10.0) + "/"
-                                    + (Math.round((double) sum / (double) count) / 10.0) + "/"
-                                    + (max / 10.0)
-                                    + ", ");
+                    station1.printStation(i);
+                    System.out.print(", ");
                 }
-
-                int idx = station1.stationOriginalIdxs[station1.stationPointer - 1] * station1.MEASUREMENT_SIZE;
-                int min = station1.measurements[idx];
-                int max = station1.measurements[idx + 1];
-                int sum = station1.measurements[idx + 2];
-                int count = station1.measurements[idx + 3];
-                System.out.print(
-                        station1.stationNames[station1.stationPointer - 1] + "="
-                                + (min / 10.0) + "/"
-                                + (Math.round((double) sum / (double) count) / 10.0) + "/"
-                                + (max / 10.0));
-
+                station1.printStation(station1.stationPointer - 1);
                 System.out.print("}");
             }
         }
