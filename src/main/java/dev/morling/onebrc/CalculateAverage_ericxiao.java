@@ -344,11 +344,11 @@ public class CalculateAverage_ericxiao {
                     Stations currStation = results.get(i);
                     for (int j = 0; j < currStation.stationPointer; j++) {
                         int currStationHash = currStation.stationOriginalIdxs[j];
-                        int idx = currStationHash * currStation.MEASUREMENT_SIZE;
-                        int min = currStation.measurements[idx];
-                        int max = currStation.measurements[idx + 1];
-                        int sum = currStation.measurements[idx + 2];
-                        int count = currStation.measurements[idx + 3];
+                        int idxOffset = currStationHash * currStation.MEASUREMENT_SIZE;
+                        int min = currStation.measurements[idxOffset];
+                        int max = currStation.measurements[idxOffset + 1];
+                        int sum = currStation.measurements[idxOffset + 2];
+                        int count = currStation.measurements[idxOffset + 3];
                         if (station1.stationExists(currStationHash))
                             station1.mergeStation(currStationHash, min, max, sum, count);
                         else
