@@ -151,26 +151,29 @@ public class CalculateAverage_ericxiao {
             long keyEndAddress;
             long valueEndAddress;
             long byteStart = startAddress;
+            long keyStartAddress = byteStart;
 
             if (!firstRead) {
                 while (UNSAFE.getByte(byteStart++) != '\n')
                     ;
+                keyStartAddress = byteStart;
+                byteStart--;
             }
 
-            long keyStartAddress = byteStart;
-
-            int byteIndex = 0;
+            int byteIndex;
 
             while (byteStart < endAddress) {
-                while ((entryBytes[byteIndex++] = UNSAFE.getByte(++byteStart)) != ';');
+                byteIndex = 0;
+                while ((entryBytes[byteIndex++] = UNSAFE.getByte(++byteStart)) != ';')
+                    ;
 
                 keyEndAddress = byteStart;
 
-                while ((entryBytes[byteIndex++] = UNSAFE.getByte(++byteStart)) != '\n');
+                while ((entryBytes[byteIndex++] = UNSAFE.getByte(++byteStart)) != '\n')
+                    ;
 
                 valueEndAddress = byteStart;
                 add(keyStartAddress, keyEndAddress, valueEndAddress);
-                byteIndex = 0;
                 keyStartAddress = valueEndAddress + 1;
             }
 
