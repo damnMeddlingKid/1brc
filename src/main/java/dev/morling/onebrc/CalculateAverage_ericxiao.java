@@ -163,9 +163,10 @@ public class CalculateAverage_ericxiao {
                 byteStart--;
             }
 
-            int byteIndex = 0;
+            int byteIndex;
 
-            while (byteStart < endAddress) {
+            //TODO: bounds are wrong here
+            while (byteStart < endAddress - 1) {
                 byteIndex = 0;
                 while ((entryBytes[byteIndex++] = UNSAFE.getByte(++byteStart)) != ';')
                     ;
