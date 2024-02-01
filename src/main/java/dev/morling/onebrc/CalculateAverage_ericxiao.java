@@ -137,15 +137,17 @@ public class CalculateAverage_ericxiao {
             int idx = Math.abs(hash) % MAP_SIZE;
             int newIdx = idx;
             while (true) {
-                if (entryExists(newIdx)) {
-                    if (stationMatches(newIdx, hash)) {
-                        int idxOffset = newIdx * MEASUREMENT_SIZE;
-                        measurements[idxOffset] = Math.min(measurements[idxOffset], min);
-                        measurements[idxOffset + 1] = Math.max(measurements[idxOffset + 1], max);
-                        measurements[idxOffset + 2] += sum;
-                        measurements[idxOffset + 3] += count;
-                        break;
-                    }
+                if (stationMatches(newIdx, hash)) {
+                    int idxOffset = newIdx * MEASUREMENT_SIZE;
+                    measurements[idxOffset] = Math.min(measurements[idxOffset], min);
+                    measurements[idxOffset + 1] = Math.max(measurements[idxOffset + 1], max);
+                    measurements[idxOffset + 2] += sum;
+                    measurements[idxOffset + 3] += count;
+                    break;
+                }
+                else if (entryExists(newIdx)) {
+                    // Continue to linear probe.
+                    newIdx++;
                 }
                 else {
                     // If a station does not exist in a thread's map, then insert.
@@ -153,7 +155,6 @@ public class CalculateAverage_ericxiao {
                     insertStation(newIdx, hash, station, min, max, sum, count);
                     break;
                 }
-                newIdx++;
             }
         }
 
