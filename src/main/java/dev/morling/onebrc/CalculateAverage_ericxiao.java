@@ -83,6 +83,8 @@ public class CalculateAverage_ericxiao {
         }
 
         void insertOrUpdateStation(int idx, int hash, int value, byte[] entryBytes, int stationLength) {
+            // Add stationMatches here as well.
+            // Switch the order of stationMatches and entryExists, station matches 80% of the time.
             if (entryExists(idx)) {
                 // A collision.
                 linearProbe(idx, hash, value, entryBytes, stationLength);
