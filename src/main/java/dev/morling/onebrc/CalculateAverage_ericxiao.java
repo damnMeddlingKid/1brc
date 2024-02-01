@@ -50,14 +50,12 @@ public class CalculateAverage_ericxiao {
         private final int MEASUREMENT_SIZE = 5;
         private final int[] measurements = new int[MAP_SIZE * MEASUREMENT_SIZE];
 
-        boolean entryExists(int idx) {
+        boolean entryExists(int idxOffset) {
             // an entry exists if there is a hash in the measurements.
-            int idxOffset = idx * MEASUREMENT_SIZE;
             return measurements[idxOffset] != 0;
         }
 
-        boolean stationMatches(int idx, int hash) {
-            int idxOffset = idx * MEASUREMENT_SIZE;
+        boolean stationMatches(int idxOffset, int hash) {
             return measurements[idxOffset] == hash;
         }
 
@@ -77,37 +75,36 @@ public class CalculateAverage_ericxiao {
                 }
                 else {
                     // Not empty entry, continue to probe.
-                    ++newIdx;
+                    newIdx += MEASUREMENT_SIZE;
                 }
             }
         }
 
         void insertOrUpdateStation(int idx, int hash, int value, byte[] entryBytes, int stationLength) {
-            if (stationMatches(idx, hash)) {
+            int idxOffset = idx * MEASUREMENT_SIZE;
+            if (stationMatches(idxOffset, hash)) {
                 // Check if station matches, 80% of the time it should, only 30% collision.
-                updateStationFast(idx, value);
+                updateStationFast(idxOffset, value);
             }
-            else if (entryExists(idx)) {
+            else if (entryExists(idxOffset)) {
                 // If entry is not empty and station doesn't match, this means there is a hash collision.
-                linearProbe(idx + 1, hash, value, entryBytes, stationLength);
+                linearProbe(idxOffset + MEASUREMENT_SIZE, hash, value, entryBytes, stationLength);
             }
             else {
                 // No collision.
                 String stationName = new String(entryBytes, 0, stationLength, StandardCharsets.UTF_8);
-                insertStationFast(idx, hash, stationName, value);
+                insertStationFast(idxOffset, hash, stationName, value);
             }
         }
 
-        void updateStationFast(int idx, int value) {
-            int idxOffset = idx * MEASUREMENT_SIZE;
+        void updateStationFast(int idxOffset, int value) {
             measurements[idxOffset + 1] = Math.min(measurements[idxOffset + 1], value);
             measurements[idxOffset + 2] = Math.max(measurements[idxOffset + 2], value);
             measurements[idxOffset + 3] += value;
             ++measurements[idxOffset + 4];
         }
 
-        void insertStation(int idx, int hash, String station, int min, int max, int sum, int count) {
-            int idxOffset = idx * MEASUREMENT_SIZE;
+        void insertStation(int idxOffset, int hash, String station, int min, int max, int sum, int count) {
             measurements[idxOffset + 1] = min;
             measurements[idxOffset + 2] = max;
             measurements[idxOffset + 3] = sum;
@@ -115,13 +112,12 @@ public class CalculateAverage_ericxiao {
             measurements[idxOffset] = hash;
 
             stationNames[stationPointer] = station;
-            stationOriginalIdxs[stationPointer] = idx;
+            stationOriginalIdxs[stationPointer] = idxOffset / MEASUREMENT_SIZE;
             ++stationPointer;
         }
 
-        void insertStationFast(int idx, int hash, String station, int value) {
+        void insertStationFast(int idxOffset, int hash, String station, int value) {
             // If the station does not exist we can pass in less arguments.
-            int idxOffset = idx * MEASUREMENT_SIZE;
             measurements[idxOffset + 1] = value;
             measurements[idxOffset + 2] = value;
             measurements[idxOffset + 3] = value;
@@ -129,30 +125,30 @@ public class CalculateAverage_ericxiao {
             measurements[idxOffset] = hash;
 
             stationNames[stationPointer] = station;
-            stationOriginalIdxs[stationPointer] = idx;
+            stationOriginalIdxs[stationPointer] = idxOffset / MEASUREMENT_SIZE;
             ++stationPointer;
         }
 
         void mergeStation(int hash, String station, int min, int max, int sum, int count) {
-            int idx = Math.abs(hash) % MAP_SIZE;
-            int newIdx = idx;
+            int newIdx = Math.abs(hash) % MAP_SIZE;
+            int idxOffset;
             while (true) {
-                if (stationMatches(newIdx, hash)) {
-                    int idxOffset = newIdx * MEASUREMENT_SIZE;
+                idxOffset = newIdx * MEASUREMENT_SIZE;
+                if (stationMatches(idxOffset, hash)) {
                     measurements[idxOffset + 1] = Math.min(measurements[idxOffset + 1], min);
                     measurements[idxOffset + 2] = Math.max(measurements[idxOffset + 2], max);
                     measurements[idxOffset + 3] += sum;
                     measurements[idxOffset + 4] += count;
                     break;
                 }
-                else if (entryExists(newIdx)) {
+                else if (entryExists(idxOffset)) {
                     // Continue to linear probe.
                     ++newIdx;
                 }
                 else {
                     // If a station does not exist in a thread's map, then insert.
                     // This does not happen in our case, but it's more realistic :D.
-                    insertStation(newIdx, hash, station, min, max, sum, count);
+                    insertStation(idxOffset, hash, station, min, max, sum, count);
                     break;
                 }
             }
