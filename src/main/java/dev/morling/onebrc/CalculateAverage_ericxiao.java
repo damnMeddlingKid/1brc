@@ -62,32 +62,34 @@ public class CalculateAverage_ericxiao {
         }
 
         void linearProbe(int idx, int hash, int value, byte[] entryBytes, int stationLength) {
-            // Find the next or correct idx.
             int newIdx = idx;
             while (true) {
-                if (entryExists(newIdx)) {
-                    if (stationMatches(newIdx, hash)) {
-                        // Collision, but existing station.
-                        updateStationFast(newIdx, value);
-                        break;
-                    }
+                if (stationMatches(newIdx, hash)) {
+                    // Collision, but existing station.
+                    updateStationFast(newIdx, value);
+                    break;
                 }
-                else {
-                    // Collision, but new station.
+                else if (!entryExists(newIdx)) {
+                    // Empty entry location, insert new statoin.
                     String stationName = new String(entryBytes, 0, stationLength, StandardCharsets.UTF_8);
                     insertStationFast(newIdx, hash, stationName, value);
                     break;
                 }
-                newIdx++;
+                else {
+                    // Not empty entry, continue to probe.
+                    newIdx++;
+                }
             }
         }
 
         void insertOrUpdateStation(int idx, int hash, int value, byte[] entryBytes, int stationLength) {
-            // Add stationMatches here as well.
-            // Switch the order of stationMatches and entryExists, station matches 80% of the time.
-            if (entryExists(idx)) {
-                // A collision.
-                linearProbe(idx, hash, value, entryBytes, stationLength);
+            if (stationMatches(idx, hash)) {
+                // Check if station matches, 80% of the time it should, only 30% collision.
+                updateStationFast(idx, value);
+            }
+            else if (entryExists(idx)) {
+                // If entry is not empty and station doesn't match, this means there is a hash collision.
+                linearProbe(idx + 1, hash, value, entryBytes, stationLength);
             }
             else {
                 // No collision.
