@@ -146,7 +146,8 @@ public class CalculateAverage_ericxiao {
                     }
                 }
                 else {
-                    // Shouldn't be happening.
+                    // If a station does not exist in a thread's map, then insert.
+                    // This does not happen in our case, but it's more realistic :D.
                     insertStation(newIdx, hash, station, min, max, sum, count);
                     break;
                 }
