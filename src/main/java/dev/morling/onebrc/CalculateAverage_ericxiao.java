@@ -77,7 +77,7 @@ public class CalculateAverage_ericxiao {
                 }
                 else {
                     // Not empty entry, continue to probe.
-                    newIdx++;
+                    ++newIdx;
                 }
             }
         }
@@ -103,7 +103,7 @@ public class CalculateAverage_ericxiao {
             measurements[idxOffset + 1] = Math.min(measurements[idxOffset + 1], value);
             measurements[idxOffset + 2] = Math.max(measurements[idxOffset + 2], value);
             measurements[idxOffset + 3] += value;
-            measurements[idxOffset + 4]++;
+            ++measurements[idxOffset + 4];
         }
 
         void insertStation(int idx, int hash, String station, int min, int max, int sum, int count) {
@@ -116,7 +116,7 @@ public class CalculateAverage_ericxiao {
 
             stationNames[stationPointer] = station;
             stationOriginalIdxs[stationPointer] = idx;
-            stationPointer++;
+            ++stationPointer;
         }
 
         void insertStationFast(int idx, int hash, String station, int value) {
@@ -130,7 +130,7 @@ public class CalculateAverage_ericxiao {
 
             stationNames[stationPointer] = station;
             stationOriginalIdxs[stationPointer] = idx;
-            stationPointer++;
+            ++stationPointer;
         }
 
         void mergeStation(int hash, String station, int min, int max, int sum, int count) {
@@ -147,7 +147,7 @@ public class CalculateAverage_ericxiao {
                 }
                 else if (entryExists(newIdx)) {
                     // Continue to linear probe.
-                    newIdx++;
+                    ++newIdx;
                 }
                 else {
                     // If a station does not exist in a thread's map, then insert.
@@ -228,7 +228,7 @@ public class CalculateAverage_ericxiao {
 
             // Calculate station
             int stationHash = 0;
-            for (int i = 0; i < keyLength; i++) {
+            for (int i = 0; i < keyLength; ++i) {
                 stationHash = 31 * stationHash + (entryBytes[i] & 0xff);
             }
             int idx = Math.abs(stationHash) % MAP_SIZE;
@@ -399,7 +399,7 @@ public class CalculateAverage_ericxiao {
                 Stations station1 = results.getFirst();
                 for (int i = 1; i < results.size(); ++i) {
                     Stations currStation = results.get(i);
-                    for (int j = 0; j < currStation.stationPointer; j++) {
+                    for (int j = 0; j < currStation.stationPointer; ++j) {
                         int currStationIdx = currStation.stationOriginalIdxs[j];
                         String station = currStation.stationNames[j];
                         int idxOffset = currStationIdx * currStation.MEASUREMENT_SIZE;
@@ -414,7 +414,7 @@ public class CalculateAverage_ericxiao {
 
                 // print key and values'
                 System.out.print("{");
-                for (int i = 0; i < station1.stationPointer - 1; i++) {
+                for (int i = 0; i < station1.stationPointer - 1; ++i) {
                     station1.printStation(i);
                     System.out.print(", ");
                 }
