@@ -40,11 +40,11 @@ public class CalculateAverage_ericxiao {
         private final int[] stationOriginalIdxs = new int[MAP_SIZE];
         private final String[] stationNames = new String[MAP_SIZE];
         /*
-         * i + 0, min
-         * i + 1, max
-         * i + 2, sum
-         * i + 3, count
-         * i + 4, hash
+         * i + 0, hash
+         * i + 1, min
+         * i + 2, max
+         * i + 3, sum
+         * i + 4, count
          */
 
         private final int MEASUREMENT_SIZE = 5;
@@ -53,12 +53,12 @@ public class CalculateAverage_ericxiao {
         boolean entryExists(int idx) {
             // an entry exists if there is a hash in the measurements.
             int idxOffset = idx * MEASUREMENT_SIZE;
-            return measurements[idxOffset + 4] != 0;
+            return measurements[idxOffset] != 0;
         }
 
         boolean stationMatches(int idx, int hash) {
             int idxOffset = idx * MEASUREMENT_SIZE;
-            return measurements[idxOffset + 4] == hash;
+            return measurements[idxOffset] == hash;
         }
 
         void linearProbe(int idx, int hash, int value, byte[] entryBytes, int stationLength) {
@@ -100,19 +100,19 @@ public class CalculateAverage_ericxiao {
 
         void updateStationFast(int idx, int value) {
             int idxOffset = idx * MEASUREMENT_SIZE;
-            measurements[idxOffset] = Math.min(measurements[idxOffset], value);
-            measurements[idxOffset + 1] = Math.max(measurements[idxOffset + 1], value);
-            measurements[idxOffset + 2] += value;
-            measurements[idxOffset + 3] += 1;
+            measurements[idxOffset + 1] = Math.min(measurements[idxOffset + 1], value);
+            measurements[idxOffset + 2] = Math.max(measurements[idxOffset + 2], value);
+            measurements[idxOffset + 3] += value;
+            measurements[idxOffset + 4]++;
         }
 
         void insertStation(int idx, int hash, String station, int min, int max, int sum, int count) {
             int idxOffset = idx * MEASUREMENT_SIZE;
-            measurements[idxOffset] = min;
-            measurements[idxOffset + 1] = max;
-            measurements[idxOffset + 2] = sum;
-            measurements[idxOffset + 3] = count;
-            measurements[idxOffset + 4] = hash;
+            measurements[idxOffset + 1] = min;
+            measurements[idxOffset + 2] = max;
+            measurements[idxOffset + 3] = sum;
+            measurements[idxOffset + 4] = count;
+            measurements[idxOffset] = hash;
 
             stationNames[stationPointer] = station;
             stationOriginalIdxs[stationPointer] = idx;
@@ -122,11 +122,11 @@ public class CalculateAverage_ericxiao {
         void insertStationFast(int idx, int hash, String station, int value) {
             // If the station does not exist we can pass in less arguments.
             int idxOffset = idx * MEASUREMENT_SIZE;
-            measurements[idxOffset] = value;
             measurements[idxOffset + 1] = value;
             measurements[idxOffset + 2] = value;
-            measurements[idxOffset + 3] = 1;
-            measurements[idxOffset + 4] = hash;
+            measurements[idxOffset + 3] = value;
+            measurements[idxOffset + 4] = 1;
+            measurements[idxOffset] = hash;
 
             stationNames[stationPointer] = station;
             stationOriginalIdxs[stationPointer] = idx;
@@ -139,10 +139,10 @@ public class CalculateAverage_ericxiao {
             while (true) {
                 if (stationMatches(newIdx, hash)) {
                     int idxOffset = newIdx * MEASUREMENT_SIZE;
-                    measurements[idxOffset] = Math.min(measurements[idxOffset], min);
-                    measurements[idxOffset + 1] = Math.max(measurements[idxOffset + 1], max);
-                    measurements[idxOffset + 2] += sum;
-                    measurements[idxOffset + 3] += count;
+                    measurements[idxOffset + 1] = Math.min(measurements[idxOffset + 1], min);
+                    measurements[idxOffset + 2] = Math.max(measurements[idxOffset + 2], max);
+                    measurements[idxOffset + 3] += sum;
+                    measurements[idxOffset + 4] += count;
                     break;
                 }
                 else if (entryExists(newIdx)) {
@@ -160,10 +160,10 @@ public class CalculateAverage_ericxiao {
 
         void printStation(int stationPtr) {
             int idxOffset = stationOriginalIdxs[stationPtr] * MEASUREMENT_SIZE;
-            int min = measurements[idxOffset];
-            int max = measurements[idxOffset + 1];
-            int sum = measurements[idxOffset + 2];
-            int count = measurements[idxOffset + 3];
+            int min = measurements[idxOffset + 1];
+            int max = measurements[idxOffset + 2];
+            int sum = measurements[idxOffset + 3];
+            int count = measurements[idxOffset + 4];
             System.out.print(
                     stationNames[stationPtr] + "="
                             + (min / 10.0) + "/"
@@ -403,11 +403,11 @@ public class CalculateAverage_ericxiao {
                         int currStationIdx = currStation.stationOriginalIdxs[j];
                         String station = currStation.stationNames[j];
                         int idxOffset = currStationIdx * currStation.MEASUREMENT_SIZE;
-                        int min = currStation.measurements[idxOffset];
-                        int max = currStation.measurements[idxOffset + 1];
-                        int sum = currStation.measurements[idxOffset + 2];
-                        int count = currStation.measurements[idxOffset + 3];
-                        int hash = currStation.measurements[idxOffset + 4];
+                        int min = currStation.measurements[idxOffset + 1];
+                        int max = currStation.measurements[idxOffset + 2];
+                        int sum = currStation.measurements[idxOffset + 3];
+                        int count = currStation.measurements[idxOffset + 4];
+                        int hash = currStation.measurements[idxOffset];
                         station1.mergeStation(hash, station, min, max, sum, count);
                     }
                 }
