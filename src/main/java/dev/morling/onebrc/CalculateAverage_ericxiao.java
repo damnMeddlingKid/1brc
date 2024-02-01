@@ -96,20 +96,6 @@ public class CalculateAverage_ericxiao {
             }
         }
 
-        void insertStationFast(int idx, int hash, String station, int value) {
-            // If the station does not exist we can pass in less arguments.
-            int idxOffset = idx * MEASUREMENT_SIZE;
-            measurements[idxOffset] = value;
-            measurements[idxOffset + 1] = value;
-            measurements[idxOffset + 2] = value;
-            measurements[idxOffset + 3] = 1;
-            measurements[idxOffset + 4] = hash;
-
-            stationNames[stationPointer] = station;
-            stationOriginalIdxs[stationPointer] = idx;
-            stationPointer++;
-        }
-
         void updateStationFast(int idx, int value) {
             int idxOffset = idx * MEASUREMENT_SIZE;
             measurements[idxOffset] = Math.min(measurements[idxOffset], value);
@@ -124,6 +110,20 @@ public class CalculateAverage_ericxiao {
             measurements[idxOffset + 1] = max;
             measurements[idxOffset + 2] = sum;
             measurements[idxOffset + 3] = count;
+            measurements[idxOffset + 4] = hash;
+
+            stationNames[stationPointer] = station;
+            stationOriginalIdxs[stationPointer] = idx;
+            stationPointer++;
+        }
+
+        void insertStationFast(int idx, int hash, String station, int value) {
+            // If the station does not exist we can pass in less arguments.
+            int idxOffset = idx * MEASUREMENT_SIZE;
+            measurements[idxOffset] = value;
+            measurements[idxOffset + 1] = value;
+            measurements[idxOffset + 2] = value;
+            measurements[idxOffset + 3] = 1;
             measurements[idxOffset + 4] = hash;
 
             stationNames[stationPointer] = station;
