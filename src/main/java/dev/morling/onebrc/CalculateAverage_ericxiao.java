@@ -130,7 +130,7 @@ public class CalculateAverage_ericxiao {
         }
 
         void mergeStation(int hash, String station, int min, int max, int sum, int count) {
-            int newIdx = Math.abs(hash) % MAP_SIZE;
+            int newIdx = hash & (MAP_SIZE - 1);
             int idxOffset;
             while (true) {
                 idxOffset = newIdx * MEASUREMENT_SIZE;
@@ -246,6 +246,9 @@ public class CalculateAverage_ericxiao {
                     byteStart++;
                 }
             }
+
+            return stations;
+        }
     }
 
     public static void main(String[] args) throws Exception {
