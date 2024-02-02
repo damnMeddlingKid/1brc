@@ -222,6 +222,7 @@ public class CalculateAverage_ericxiao {
             while (byteStart < endAddress - 1) {
                 byteIndex = -1;
                 stationHash = 0;
+
                 while ((entryBytes[++byteIndex] = UNSAFE.getByte(++byteStart)) != ';') {
                     stationHash = 31 * stationHash + (entryBytes[byteIndex] & 0xff);
                 }
