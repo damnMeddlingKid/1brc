@@ -131,26 +131,20 @@ public class CalculateAverage_ericxiao {
                 for (int i = valueStart + 1; i < valueStart + valueLength - 2; ++i) {
                     accumulator = accumulator * 10 + entryBytes[i] - '0';
                 }
-                return -accumulator*10;
+                return -accumulator*10 + entryBytes[valueStart + valueLength];
             }
             else {
                 accumulator = entryBytes[valueStart] - '0';
                 for (int i = valueStart + 1; i < valueStart + valueLength - 2; ++i) {
                     accumulator = accumulator * 10 + entryBytes[i] - '0';
                 }
-                return accumulator*10;
+                return accumulator*10  + entryBytes[valueStart + valueLength];
             }
         }
 
-        public void add(int stationHash, long keyStart, long keyEnd, long valueEnd) {
-            int keyLength = (int) (keyEnd - keyStart);
-            // Calculate measurement
-            int valueLength = (int) (valueEnd - (keyEnd + 1));
-
-            int value = calcValue(keyLength + 1, valueLength);
+        public void add(int stationHash, int keyLength, int value) {
             // Calculate station
             int hash = stationHash & (MAP_SIZE - 1);
-
             stations.insertOrUpdate(hash, value, entryBytes, keyLength);
         }
 
@@ -159,15 +153,11 @@ public class CalculateAverage_ericxiao {
         }
 
         private Stations readMemory(long startAddress, long endAddress) {
-            long keyEndAddress;
-            long valueEndAddress;
             long byteStart = startAddress;
-            long keyStartAddress = byteStart;
 
             if (!firstRead) {
                 while (UNSAFE.getByte(byteStart++) != '\n')
                     ;
-                keyStartAddress = byteStart;
                 byteStart--;
             }
 
@@ -182,14 +172,24 @@ public class CalculateAverage_ericxiao {
                     stationHash = 31 * stationHash + (entryBytes[byteIndex] & 0xff);
                 }
 
-                keyEndAddress = byteStart;
+                byte value = UNSAFE.getByte(++byteStart);
+                int accumulator = 0;
+                int keyLength = byteIndex + 1;
 
-                while ((entryBytes[byteIndex++] = UNSAFE.getByte(++byteStart)) != '\n')
-                    ;
-
-                valueEndAddress = byteStart;
-                add((int) stationHash, keyStartAddress, keyEndAddress, valueEndAddress);
-                keyStartAddress = valueEndAddress + 1;
+                if(value == '-') {
+                    while ((value = UNSAFE.getByte(++byteStart)) != '.') {
+                        accumulator = accumulator * 10 + value - '0';
+                    }
+                    add((int) stationHash, keyLength, -accumulator*10 + UNSAFE.getByte(++byteStart));
+                    byteStart++;
+                } else {
+                    accumulator = value - '0';
+                    while ((value = UNSAFE.getByte(++byteStart)) != '.') {
+                        accumulator = accumulator * 10 + value - '0';
+                    }
+                    add((int) stationHash, keyLength, accumulator*10 + UNSAFE.getByte(++byteStart));
+                    byteStart++;
+                }
             }
 
             return stations;
