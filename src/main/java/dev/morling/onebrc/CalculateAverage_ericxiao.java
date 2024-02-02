@@ -32,65 +32,65 @@ public class CalculateAverage_ericxiao {
 
     private static final String FILE = "./measurements.txt";
 
-    private static final int MAP_SIZE = 2 << 10; // ceiling(log(10k) / log(2))
+    private static final int MAP_SIZE = 2 << 11; // ceiling(log(10k) / log(2))
+
+    private static class Station {
+        public int min;
+        public int max;
+        public int sum;
+        public int count;
+        public String name;
+
+        public void set(int value, String name) {
+            this.min = value;
+            this.max = value;
+            this.sum = value;
+            this.count = 1;
+            this.name = name;
+        }
+
+        public void merge(int value) {
+            this.min = Math.min(this.min, value);
+            this.max = Math.max(this.max, value);
+            this.sum += value;
+            this.count++;
+        }
+
+        public Station merge(Station other) {
+            if (this.name != null && !this.name.equals(other.name))
+                throw new RuntimeException("wrong");
+            this.min = Math.min(this.min, other.min);
+            this.max = Math.max(this.max, other.max);
+            this.sum += other.sum;
+            this.count += other.count;
+            return this;
+        }
+
+        public String toString() {
+            return STR."\{this.min / 10.0}/\{Math.round((double) this.sum / (double) this.count) / 10.0}/\{this.max / 10.0}";
+        }
+    }
 
     private static class Stations {
+        private int tail = 0;
+        private final Station[] measurements;
+        public final int[] stationPositions = new int[512];
 
-        private int stationPointer = 0;
-        private final int[] stationHashes = new int[MAP_SIZE];
-        private final String[] stationNames = new String[MAP_SIZE];
-        /*
-         * i + 0, min
-         * i + 1, max
-         * i + 2, sum
-         * i + 3, count
-         */
-
-        private final int MEASUREMENT_SIZE = 4;
-        private final int[] measurements = new int[MAP_SIZE * MEASUREMENT_SIZE];
-
-        boolean stationExists(int hash) {
-            // if count != 0, that means we have never seen this before.
-            int idx = hash * MEASUREMENT_SIZE;
-            return measurements[idx] != 0;
-        }
-
-        void insertStation(int hash, String station, int min, int max, int sum, int count) {
-            int idx = hash * MEASUREMENT_SIZE;
-            measurements[idx] = count;
-            measurements[idx + 1] = min;
-            measurements[idx + 2] = max;
-            measurements[idx + 3] = sum;
-
-            stationNames[stationPointer] = station;
-            stationHashes[stationPointer] = hash;
-            stationPointer++;
-        }
-
-        void insertOrUpdate(int hash, int value, byte[] entryBytes, int keyLength) {
-            int idx = hash * MEASUREMENT_SIZE;
-            if (measurements[idx] == 0) {
-                measurements[idx] = 1;
-                measurements[idx + 1] = value;
-                measurements[idx + 2] = value;
-                measurements[idx + 3] = value;
-                stationNames[stationPointer] = new String(entryBytes, 0, keyLength, StandardCharsets.UTF_8);;
-                stationHashes[stationPointer] = hash;
-                stationPointer++;
-            } else {
-                measurements[idx] += 1;
-                measurements[idx + 1] = Math.min(measurements[idx], value);
-                measurements[idx + 2] = Math.max(measurements[idx + 1], value);
-                measurements[idx + 3] += value;
+        public Stations() {
+            measurements = new Station[MAP_SIZE];
+            for (int i = 0; i < MAP_SIZE; i++) {
+                measurements[i] = new Station();
             }
         }
 
-        void updateStation(int hash, int min, int max, int sum, int count) {
-            int idx = hash * MEASUREMENT_SIZE;
-            measurements[idx] += count;
-            measurements[idx + 1] = Math.min(measurements[idx], min);
-            measurements[idx + 2] = Math.max(measurements[idx + 1], max);
-            measurements[idx + 3] += sum;
+        void insertOrUpdate(int hash, int value, byte[] entryBytes, int keyLength) {
+            if (measurements[hash].count == 0) {
+                measurements[hash].set(value, new String(entryBytes, 0, keyLength, StandardCharsets.UTF_8));
+                stationPositions[tail++] = hash;
+            }
+            else {
+                measurements[hash].merge(value);
+            }
         }
     }
 
@@ -123,25 +123,6 @@ public class CalculateAverage_ericxiao {
             }
         }
 
-        public int calcValue(int valueStart, int valueLength) {
-            final byte negativeSign = '-';
-            int accumulator = 0;
-
-            if (entryBytes[valueStart] == negativeSign) {
-                for (int i = valueStart + 1; i < valueStart + valueLength - 2; ++i) {
-                    accumulator = accumulator * 10 + entryBytes[i] - '0';
-                }
-                return -accumulator*10 + entryBytes[valueStart + valueLength];
-            }
-            else {
-                accumulator = entryBytes[valueStart] - '0';
-                for (int i = valueStart + 1; i < valueStart + valueLength - 2; ++i) {
-                    accumulator = accumulator * 10 + entryBytes[i] - '0';
-                }
-                return accumulator*10  + entryBytes[valueStart + valueLength];
-            }
-        }
-
         public void add(int stationHash, int keyLength, int value) {
             // Calculate station
             int hash = stationHash & (MAP_SIZE - 1);
@@ -164,7 +145,7 @@ public class CalculateAverage_ericxiao {
             int byteIndex;
             long stationHash;
 
-            //TODO: bounds are wrong here
+            // TODO: bounds are wrong here
             while (byteStart < endAddress - 1) {
                 byteIndex = -1;
                 stationHash = 0;
@@ -174,20 +155,21 @@ public class CalculateAverage_ericxiao {
 
                 byte value = UNSAFE.getByte(++byteStart);
                 int accumulator = 0;
-                int keyLength = byteIndex + 1;
+                int keyLength = byteIndex;
 
-                if(value == '-') {
+                if (value == '-') {
                     while ((value = UNSAFE.getByte(++byteStart)) != '.') {
                         accumulator = accumulator * 10 + value - '0';
                     }
-                    add((int) stationHash, keyLength, -accumulator*10 + UNSAFE.getByte(++byteStart));
+                    add((int) stationHash, keyLength, -(accumulator * 10 + UNSAFE.getByte(++byteStart) - '0'));
                     byteStart++;
-                } else {
+                }
+                else {
                     accumulator = value - '0';
                     while ((value = UNSAFE.getByte(++byteStart)) != '.') {
                         accumulator = accumulator * 10 + value - '0';
                     }
-                    add((int) stationHash, keyLength, accumulator*10 + UNSAFE.getByte(++byteStart));
+                    add((int) stationHash, keyLength, accumulator * 10 + UNSAFE.getByte(++byteStart) - '0');
                     byteStart++;
                 }
             }
@@ -237,51 +219,21 @@ public class CalculateAverage_ericxiao {
             }
             finally {
                 executorService.shutdown();
+                TreeMap<String, Station> finalResults = new TreeMap<>();
 
-                Stations station1 = results.getFirst();
-                for (int i = 1; i < numThreads; ++i) {
-                    Stations currStation = results.get(i);
-                    for (int j = 0; j < currStation.stationPointer; j++) {
-                        int currStationHash = currStation.stationHashes[j];
-                        int idx = currStationHash * currStation.MEASUREMENT_SIZE;
-                        int count = currStation.measurements[idx];
-                        int min = currStation.measurements[idx + 1];
-                        int max = currStation.measurements[idx + 2];
-                        int sum = currStation.measurements[idx + 3];
-                        if (station1.stationExists(currStationHash))
-                            station1.updateStation(currStationHash, min, max, sum, count);
-                        else
-                            station1.insertStation(currStationHash, currStation.stationNames[j], min, max, sum, count);
+                for (int i = 0; i < numThreads; ++i) {
+                    Stations stations = results.get(i);
+                    for (int j = 0; j < stations.tail; j++) {
+                        Station station = stations.measurements[stations.stationPositions[j]];
+                        finalResults.compute(station.name, (_, value) -> {
+                            if (value == null)
+                                return new Station().merge(station);
+                            return value.merge(station);
+                        });
                     }
                 }
-                // print key and values
-                System.out.print("{");
-                for (int i = 0; i < station1.stationPointer - 1; i++) {
-                    int idx = station1.stationHashes[i] * station1.MEASUREMENT_SIZE;
-                    int count = station1.measurements[idx];
-                    int min = station1.measurements[idx + 1];
-                    int max = station1.measurements[idx + 2];
-                    int sum = station1.measurements[idx + 3];
-                    System.out.print(
-                            station1.stationNames[i] + "="
-                                    + (min / 10.0) + "/"
-                                    + (Math.round((double) sum / (double) count) / 10.0) + "/"
-                                    + (max / 10.0)
-                                    + ", ");
-                }
 
-                int idx = station1.stationHashes[station1.stationPointer - 1] * station1.MEASUREMENT_SIZE;
-                int count = station1.measurements[idx];
-                int min = station1.measurements[idx + 1];
-                int max = station1.measurements[idx + 2];
-                int sum = station1.measurements[idx + 3];
-                System.out.print(
-                        station1.stationNames[station1.stationPointer - 1] + "="
-                                + (min / 10.0) + "/"
-                                + (Math.round((double) sum / (double) count) / 10.0) + "/"
-                                + (max / 10.0));
-
-                System.out.print("}");
+                System.out.println(finalResults);
             }
         }
     }
