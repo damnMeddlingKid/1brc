@@ -197,44 +197,9 @@ public class CalculateAverage_ericxiao {
             }
         }
 
-        public void add(long keyStart, long keyEnd, long valueEnd) {
-            int entryLength = (int) (valueEnd - keyStart);
-            int keyLength = (int) (keyEnd - keyStart);
-            UNSAFE.copyMemory(null, keyStart, entryBytes, Unsafe.ARRAY_BYTE_BASE_OFFSET, entryLength);
-
-            // Calculate measurement
-            int valueLength = (int) (valueEnd - (keyEnd + 1));
-            final byte negativeSign = '-';
-            final byte periodSign = '.';
-
-            int accumulator = 0;
-            short multiplier = 1;
-            if (entryBytes[keyLength + 1] == negativeSign) {
-                multiplier = -1;
-            }
-            else {
-                accumulator = entryBytes[keyLength + 1] - '0';
-            }
-
-            for (int i = keyLength + 2; i <= keyLength + valueLength; ++i) {
-                if (entryBytes[i] != periodSign)
-                    accumulator = accumulator * 10 + entryBytes[i] - '0';
-            }
-            int value = multiplier * accumulator;
-
-            // Calculate station
-            int stationHash = 0;
-            for (int i = 0; i < keyLength; ++i) {
-                stationHash = 31 * stationHash + (entryBytes[i] & 0xff);
-            }
-            int idx = Math.abs(stationHash) % MAP_SIZE;
-
+        public void add(int stationHash, int keyLength, int value) {
+            int idx = stationHash & (MAP_SIZE - 1);
             stations.insertOrUpdateStation(idx, stationHash, value, entryBytes, keyLength);
-        }
-
-        private static long delimiterMask(long word, long delimiter) {
-            long mask = word ^ delimiter;
-            return (mask - 0x0101010101010101L) & (~mask & 0x8080808080808080L);
         }
 
         public Stations call() {
@@ -242,112 +207,45 @@ public class CalculateAverage_ericxiao {
         }
 
         private Stations readMemory(long startAddress, long endAddress) {
-            int packedBytes = 0;
-            final long singleSemiColonPattern = 0x3BL;
-            final long semiColonPattern = 0x3B3B3B3B3B3B3B3BL;
-            final long singleNewLinePattern = 0x0AL;
-            final long newLinePattern = 0x0A0A0A0A0A0A0A0AL;
-            long keyEndAddress;
-            long valueEndAddress;
-
-            long word;
-            long mask;
-
             long byteStart = startAddress;
 
-            // TODO: We might need to consider memory alignment here. we need to be on a 8 byte boundary.
-
-            // We need to skip to the first \n so that we skip partial data. The partial data will be picked up by the previous thread.
             if (!firstRead) {
                 while (UNSAFE.getByte(byteStart++) != '\n')
                     ;
+                byteStart--;
             }
 
-            long keyStartAddress = byteStart;
+            int byteIndex;
+            long stationHash;
 
-            // TODO we should align the address to 8 byte boundary here.
-            // byteStart = (byteStart + 7) & ~7;
-
-            final int vectorLoops = (int) (endAddress - byteStart) / 8;
-
-            word = UNSAFE.getLong(byteStart);
-            packedBytes += 1;
-
-            while (true) {
-                mask = delimiterMask(word, semiColonPattern);
-                while (mask == 0 && packedBytes < vectorLoops) {
-                    packedBytes += 1;
-                    byteStart += 8;
-                    word = UNSAFE.getLong(byteStart);
-                    mask = delimiterMask(word, semiColonPattern);
+            // TODO: bounds are wrong here
+            while (byteStart < endAddress - 1) {
+                byteIndex = -1;
+                stationHash = 0;
+                while ((entryBytes[++byteIndex] = UNSAFE.getByte(++byteStart)) != ';') {
+                    stationHash = 31 * stationHash + (entryBytes[byteIndex] & 0xff);
                 }
 
-                if (packedBytes == vectorLoops)
-                    break;
+                byte value = UNSAFE.getByte(++byteStart);
+                int accumulator = 0;
+                int keyLength = byteIndex;
 
-                keyEndAddress = byteStart + (Long.numberOfTrailingZeros(mask) / 8);
-
-                // Once we find the semicolon we remove it from the word
-                // so that we can find multiple semicolons in the same word.
-                word ^= singleSemiColonPattern << (Long.numberOfTrailingZeros(mask) + 1 - 8);
-
-                // The new line pattern could be located in the same byte we found the key in.
-                // so we need to check if the value is in this byte.
-                mask = delimiterMask(word, newLinePattern);
-
-                while (mask == 0 && packedBytes < vectorLoops) {
-                    packedBytes += 1;
-                    byteStart += 8;
-                    word = UNSAFE.getLong(byteStart);
-                    mask = delimiterMask(word, newLinePattern);
-                }
-
-                if (packedBytes == vectorLoops)
-                    break;
-
-                valueEndAddress = byteStart + (Long.numberOfTrailingZeros(mask) / 8);
-                add(keyStartAddress, keyEndAddress, valueEndAddress);
-                keyStartAddress = valueEndAddress + 1;
-
-                // TODO: We might be able to do better here by using popcount on the mask
-                // and then shifting the mask till it is zero.
-
-                // Same as before, we remove the newline character so we don't match it again.
-                word ^= singleNewLinePattern << (Long.numberOfTrailingZeros(mask) + 1 - 8);
-            }
-
-            // We do scalar reads here for the remaining values.
-            byteStart = keyStartAddress;
-
-            while (byteStart < endAddress) {
-                byte value = UNSAFE.getByte(byteStart);
-                if (value == ';') {
-                    keyEndAddress = byteStart;
-                    while (UNSAFE.getByte(++byteStart) != '\n')
-                        ;
-                    valueEndAddress = byteStart;
-                    add(keyStartAddress, keyEndAddress, valueEndAddress);
-                    keyStartAddress = valueEndAddress + 1;
+                if (value == '-') {
+                    while ((value = UNSAFE.getByte(++byteStart)) != '.') {
+                        accumulator = accumulator * 10 + value - '0';
+                    }
+                    add((int) stationHash, keyLength, -(accumulator * 10 + UNSAFE.getByte(++byteStart) - '0'));
+                    byteStart++;
                 }
                 else {
+                    accumulator = value - '0';
+                    while ((value = UNSAFE.getByte(++byteStart)) != '.') {
+                        accumulator = accumulator * 10 + value - '0';
+                    }
+                    add((int) stationHash, keyLength, accumulator * 10 + UNSAFE.getByte(++byteStart) - '0');
                     byteStart++;
                 }
             }
-
-            // we need to do one more read here so that we overlap with the next chunk.
-            if (!lastRead) {
-                byteStart = keyStartAddress;
-                while (UNSAFE.getByte(++byteStart) != ';')
-                    ;
-                keyEndAddress = byteStart;
-                while (UNSAFE.getByte(++byteStart) != '\n')
-                    ;
-                valueEndAddress = byteStart;
-                add(keyStartAddress, keyEndAddress, valueEndAddress);
-            }
-
-            return stations;
-        }
     }
 
     public static void main(String[] args) throws Exception {
