@@ -202,11 +202,19 @@ public class CalculateAverage_ericxiao {
             stations.insertOrUpdateStation(idx, stationHash, value, entryBytes, keyLength);
         }
 
+        private static long delimiterMask(long word, long delimiter) {
+            long mask = word ^ delimiter;
+            return (mask - 0x0101010101010101L) & (~mask & 0x8080808080808080L);
+        }
+
         public Stations call() {
             return readMemory(readStart, readEnd);
         }
 
         private Stations readMemory(long startAddress, long endAddress) {
+            final long singleSemiColonPattern = 0x3BL;
+            final long semiColonPattern = 0x3B3B3B3B3B3B3B3BL;
+            final long allOnes = 0xFFFFFFFFFFFFFFFFL;
             long byteStart = startAddress;
 
             if (!firstRead) {
@@ -217,25 +225,45 @@ public class CalculateAverage_ericxiao {
 
             int byteIndex;
             long stationHash;
+            long word;
+            long mask;
+            long[] keyWords = new long[12];
+            int keyIndex;
+            int keyLength;
+            int delimiterIndex;
+            int reducedHash;
+
 
             // TODO: bounds are wrong here
             while (byteStart < endAddress - 1) {
-                byteIndex = -1;
+                keyIndex = -1;
                 stationHash = 0;
 
-                while ((entryBytes[++byteIndex] = UNSAFE.getByte(++byteStart)) != ';') {
-                    stationHash = 31 * stationHash + (entryBytes[byteIndex] & 0xff);
+                keyWords[++keyIndex] = UNSAFE.getLong(++byteStart);
+                mask = delimiterMask(keyWords[keyIndex], semiColonPattern);
+
+                while (mask == 0) {
+                    byteStart += 8;
+                    stationHash ^= keyWords[keyIndex];
+                    keyWords[++keyIndex] = UNSAFE.getLong(byteStart);
+                    mask = delimiterMask(keyWords[keyIndex], semiColonPattern);
                 }
+
+                delimiterIndex = (Long.numberOfTrailingZeros(mask) / 8);
+                stationHash = stationHash ^ (keyWords[keyIndex] & (allOnes << delimiterIndex));
+                reducedHash = (int) ((stationHash >> 32) ^ (stationHash & 0xFFFFFFFFL));
+
+                keyLength = (keyIndex - 1) * 8 + delimiterIndex;
+                byteStart -= (delimiterIndex - 1);
 
                 byte value = UNSAFE.getByte(++byteStart);
                 int accumulator = 0;
-                int keyLength = byteIndex;
 
                 if (value == '-') {
                     while ((value = UNSAFE.getByte(++byteStart)) != '.') {
                         accumulator = accumulator * 10 + value - '0';
                     }
-                    add((int) stationHash, keyLength, -(accumulator * 10 + UNSAFE.getByte(++byteStart) - '0'));
+                    add(reducedHash, keyLength, -(accumulator * 10 + UNSAFE.getByte(++byteStart) - '0'));
                     byteStart++;
                 }
                 else {
@@ -243,7 +271,7 @@ public class CalculateAverage_ericxiao {
                     while ((value = UNSAFE.getByte(++byteStart)) != '.') {
                         accumulator = accumulator * 10 + value - '0';
                     }
-                    add((int) stationHash, keyLength, accumulator * 10 + UNSAFE.getByte(++byteStart) - '0');
+                    add(reducedHash, keyLength, accumulator * 10 + UNSAFE.getByte(++byteStart) - '0');
                     byteStart++;
                 }
             }
