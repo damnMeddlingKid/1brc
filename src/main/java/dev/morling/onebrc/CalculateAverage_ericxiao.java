@@ -28,19 +28,17 @@ import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.*;
 
-import static dev.morling.onebrc.CalculateAverage_ericxiao.ProcessFileMap.initUnsafe;
-
 public class CalculateAverage_ericxiao {
 
     private static final String FILE = "./measurements.txt";
 
-    private static final int MAP_SIZE = 2 << 10; // ceiling(log(10k) / log(2))
+    private static final int MAP_SIZE = 2 << 11; // ceiling(log(10k) / log(2))
 
     private static class Stations {
-        private static final Unsafe UNSAFE = initUnsafe();
+
         private int stationPointer = 0;
-        private final int[] stationOriginalIdxs = new int[MAP_SIZE];
-        private final String[] stationNames = new String[MAP_SIZE];
+        private final int[] stationOriginalIdxs = new int[512];
+        private final String[] stationNames = new String[512];
         /*
          * i + 0, hash
          * i + 1, min
@@ -61,52 +59,61 @@ public class CalculateAverage_ericxiao {
             return measurements[idxOffset] == hash;
         }
 
-        void linearProbe(int idx, int hash, int value, long baseKeyAddres, int stationLength) {
+        void linearProbe(int idx, int hash, int value, long[] keyWords, int stationLength) {
             int newIdx = idx;
+            int existingHash;
             while (true) {
-                if (stationMatches(newIdx, hash)) {
+                existingHash = measurements[newIdx];
+                if (existingHash == hash) {
                     // Collision, but existing station.
                     updateStationFast(newIdx, value);
                     break;
                 }
-                else if (!entryExists(newIdx)) {
+                else if (existingHash == 0) {
                     // Empty entry location, insert new statoin.
-                    String stationName = getKey(baseKeyAddres, stationLength);
+                    String stationName = getKey(keyWords, stationLength);
                     insertStationFast(newIdx, hash, stationName, value);
                     break;
                 }
                 else {
                     // Not empty entry, continue to probe.
                     newIdx += MEASUREMENT_SIZE;
-                    // newIdx = (newIdx & (MAP_SIZE-1)) * MEASUREMENT_SIZE;
+                    //newIdx = (newIdx & (MAP_SIZE-1)) * MEASUREMENT_SIZE;
                 }
             }
         }
 
-        public String getKey(long baseAddress, int keyLength) {
+        public String getKey(long[] packedWords, int keyLength) {
             // read the first keyLength bytes from the packed words as a string.
             StringBuilder sb = new StringBuilder(keyLength);
+            int wordIndex = 0;
             int byteIndex = 0;
+            long word = packedWords[wordIndex];
             while (byteIndex < keyLength) {
-                sb.append((char) UNSAFE.getByte(baseAddress + byteIndex));
+                sb.append((char) (word & 0xFF));
+                word >>>= 8;
                 byteIndex++;
+                if ((byteIndex & 7) == 0) {
+                    word = packedWords[++wordIndex];
+                }
             }
             return sb.toString();
         }
 
-        void insertOrUpdateStation(int idx, int hash, int value, long baseKeyAddress, int stationLength) {
+        void insertOrUpdateStation(int idx, int hash, int value, long[] keyWords, int stationLength) {
             int idxOffset = idx * MEASUREMENT_SIZE;
-            if (stationMatches(idxOffset, hash)) {
+            int existingHash = measurements[idxOffset];
+            if (existingHash == hash) {
                 // Check if station matches, 80% of the time it should, only 30% collision.
                 updateStationFast(idxOffset, value);
             }
-            else if (entryExists(idxOffset)) {
+            else if (existingHash != 0) {
                 // If entry is not empty and station doesn't match, this means there is a hash collision.
-                linearProbe(idxOffset + MEASUREMENT_SIZE, hash, value, baseKeyAddress, stationLength);
+                linearProbe(idxOffset + MEASUREMENT_SIZE, hash, value, keyWords, stationLength);
             }
             else {
                 // No collision.
-                String stationName = getKey(baseKeyAddress, stationLength);
+                String stationName = getKey(keyWords, stationLength);
                 insertStationFast(idxOffset, hash, stationName, value);
             }
         }
@@ -199,7 +206,7 @@ public class CalculateAverage_ericxiao {
 
         private final Stations stations = new Stations();
 
-        public static Unsafe initUnsafe() {
+        private static Unsafe initUnsafe() {
             try {
                 final Field theUnsafe = Unsafe.class.getDeclaredField("theUnsafe");
                 theUnsafe.setAccessible(true);
@@ -210,9 +217,9 @@ public class CalculateAverage_ericxiao {
             }
         }
 
-        public void add(int stationHash, long baseKeyAddress, int keyLength, int value) {
+        public void add(int stationHash, long[] keyWords, int keyLength, int value) {
             int idx = stationHash & (MAP_SIZE - 1);
-            stations.insertOrUpdateStation(idx, stationHash, value, baseKeyAddress, keyLength);
+            stations.insertOrUpdateStation(idx, stationHash, value, keyWords, keyLength);
         }
 
         private static long delimiterMask(long word, long delimiter) {
@@ -242,6 +249,7 @@ public class CalculateAverage_ericxiao {
         }
 
         private Stations readMemory(long startAddress, long endAddress) {
+            final long singleSemiColonPattern = 0x3BL;
             final long semiColonPattern = 0x3B3B3B3B3B3B3B3BL;
             final long allOnes = 0xFFFFFFFFFFFFFFFFL;
             long byteStart = startAddress;
@@ -249,67 +257,63 @@ public class CalculateAverage_ericxiao {
             if (!firstRead) {
                 while (UNSAFE.getByte(byteStart++) != '\n')
                     ;
-                byteStart--;
+                //byteStart;
             }
 
-            int byteIndex;
             long stationHash;
-            long word;
-            byte value;
             long mask;
-            long keyWord = 0;
+            long[] keyWords = new long[12];
             int keyIndex;
             int keyLength;
             int delimiterIndex;
             int reducedHash;
-            int accumulator;
-            long baseAddress = byteStart;
-            int cursorIdx = 0;
 
             // TODO: bounds are wrong here
             while (byteStart < endAddress - 1) {
                 keyIndex = -1;
                 stationHash = 0;
 
-                keyWord ^= UNSAFE.getLong(byteStart);
-                mask = delimiterMask(keyWord, semiColonPattern);
+                keyWords[++keyIndex] = UNSAFE.getLong(byteStart);
+                mask = keyWords[keyIndex] ^ semiColonPattern;
+                mask = (mask - 0x0101010101010101L) & (~mask & 0x8080808080808080L);
 
                 while (mask == 0) {
                     byteStart += 8;
-                    stationHash ^= keyWord;
-                    keyWord ^= UNSAFE.getLong(byteStart);
-                    mask = delimiterMask(keyWord, semiColonPattern);
+                    stationHash ^= keyWords[keyIndex];
+                    keyWords[++keyIndex] = UNSAFE.getLong(byteStart);
+                    //mask = delimiterMask(keyWords[keyIndex], semiColonPattern);
+                    mask = keyWords[keyIndex] ^ semiColonPattern;
+                    mask = (mask - 0x0101010101010101L) & (~mask & 0x8080808080808080L);
                 }
 
                 delimiterIndex = (Long.numberOfTrailingZeros(mask) / 8);
-                // stationHash = stationHash ^ (keyWords[keyIndex] & (allOnes >>> (delimiterIndex * 8)));
+                //stationHash = stationHash ^ (keyWords[keyIndex] & (allOnes >>> (delimiterIndex * 8)));
                 int shr = Long.numberOfTrailingZeros(mask) + 1;
                 if (shr > 8) {
                     int shr2 = 72 - shr;
-                    stationHash ^= (keyWord << shr2) >> shr2;
+                    stationHash ^= (keyWords[keyIndex] << shr2) >> shr2;
                 }
-                reducedHash = (int) (stationHash ^ (stationHash >> 29));
-
+                reducedHash = (int) (stationHash ^ (stationHash >> 29));//(int) ((stationHash >> 32) ^ (stationHash & 0xFFFFFFFFL));
                 keyLength = (keyIndex * 8) + delimiterIndex;
                 byteStart += delimiterIndex;
 
-                value = UNSAFE.getByte(++byteStart);
-                accumulator = 0;
+                byte value = UNSAFE.getByte(++byteStart);
+                int accumulator = 0;
 
                 if (value == '-') {
                     while ((value = UNSAFE.getByte(++byteStart)) != '.') {
                         accumulator = accumulator * 10 + value - '0';
                     }
-                    add(reducedHash, baseAddress, keyLength, -(accumulator * 10 + UNSAFE.getByte(++byteStart) - '0'));
+                    add(reducedHash, keyWords, keyLength, -(accumulator * 10 + UNSAFE.getByte(++byteStart) - '0'));
                 }
                 else {
                     accumulator = value - '0';
                     while ((value = UNSAFE.getByte(++byteStart)) != '.') {
                         accumulator = accumulator * 10 + value - '0';
                     }
-                    add(reducedHash, baseAddress, keyLength, accumulator * 10 + UNSAFE.getByte(++byteStart) - '0');
+                    add(reducedHash, keyWords, keyLength, accumulator * 10 + UNSAFE.getByte(++byteStart) - '0');
                 }
-                byteStart += 2;
+                byteStart+=2;
             }
 
             return stations;
